@@ -621,19 +621,47 @@
       if (!CONFIG.supabaseUrl || !CONFIG.supabaseKey) return;
       
       try {
-        // Try the cached tree_data.json first
         let data;
+        
+        // Try the cached tree_data.json first
         try {
           const cacheResp = await fetch(CONFIG.supabaseUrl + '/storage/v1/object/public/tree_cache/tree_data.json');
-          if (cacheResp.ok) data = await cacheResp.json();
+          if (cacheResp.ok) {
+            const parsed = await cacheResp.json();
+            // FIX: Ensure we got an array (cache might contain an error object or wrapped response)
+            if (Array.isArray(parsed)) {
+              data = parsed;
+            } else if (parsed && typeof parsed === 'object' && !parsed.error) {
+              // generate_tree_json returns jsonb which might not be array-wrapped
+              data = Array.isArray(parsed) ? parsed : [parsed];
+            }
+          }
         } catch (e) {}
         
-        // Fallback to direct query
+        // Fallback to direct REST query on documents table
         if (!data) {
-          const resp = await fetch(CONFIG.supabaseUrl + '/rest/v1/tree_data', {
-            headers: { 'apikey': CONFIG.supabaseKey, 'Authorization': 'Bearer ' + CONFIG.supabaseKey }
-          });
-          data = await resp.json();
+          try {
+            const resp = await fetch(CONFIG.supabaseUrl + '/rest/v1/documents?select=*&order=created_at.desc', {
+              headers: { 'apikey': CONFIG.supabaseKey, 'Authorization': 'Bearer ' + CONFIG.supabaseKey }
+            });
+            if (resp.ok) {
+              const parsed = await resp.json();
+              if (Array.isArray(parsed)) data = parsed;
+            }
+          } catch (e2) {}
+        }
+        
+        // Last resort: try tree_data view
+        if (!data) {
+          try {
+            const resp = await fetch(CONFIG.supabaseUrl + '/rest/v1/tree_data', {
+              headers: { 'apikey': CONFIG.supabaseKey, 'Authorization': 'Bearer ' + CONFIG.supabaseKey }
+            });
+            if (resp.ok) {
+              const parsed = await resp.json();
+              if (Array.isArray(parsed)) data = parsed;
+            }
+          } catch (e3) {}
         }
         
         treeData = data || [];
@@ -645,7 +673,8 @@
     
     function renderTree(data) {
       const container = document.getElementById('treeContainer');
-      if (!data || data.length === 0) {
+      // FIX: Ensure data is always an array before iterating
+      if (!Array.isArray(data) || data.length === 0) {
         container.innerHTML = '<div class="empty-state"><p>📭</p><p>No documents yet. Upload some files above to get started.</p></div>';
         return;
       }
