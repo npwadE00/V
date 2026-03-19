@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document Intake Pipeline</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #21262d;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --purple: #bc8cff;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+    
+    .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+    h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
+    h2 { font-size: 18px; font-weight: 600; margin-bottom: 12px; color: var(--accent); }
+    .subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
+    
+    /* ── CONFIG BANNER ── */
+    .config-banner { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 24px; }
+    .config-banner input { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 4px; font-size: 13px; width: 100%; margin-top: 4px; font-family: monospace; }
+    .config-banner label { font-size: 12px; color: var(--text-muted); display: block; margin-top: 8px; }
+    .config-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    
+    /* ── TABS ── */
+    .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; }
+    .tab { padding: 10px 20px; font-size: 14px; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; transition: all 0.15s; }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    
+    /* ── UPLOAD ZONE ── */
+    .upload-section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+    .dropzone { border: 2px dashed var(--border); border-radius: 8px; padding: 40px; text-align: center; cursor: pointer; transition: all 0.15s; }
+    .dropzone:hover, .dropzone.dragover { border-color: var(--accent); background: rgba(88, 166, 255, 0.05); }
+    .dropzone p { color: var(--text-muted); font-size: 14px; }
+    .dropzone .big { font-size: 16px; color: var(--text); margin-bottom: 4px; }
+    
+    .form-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 16px; }
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .form-group label { font-size: 12px; color: var(--text-muted); }
+    select, input[type="text"], textarea { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 8px 10px; border-radius: 4px; font-size: 13px; font-family: inherit; }
+    textarea { resize: vertical; min-height: 60px; }
+    
+    .file-list { margin-top: 12px; max-height: 200px; overflow-y: auto; }
+    .file-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: var(--surface2); border-radius: 4px; margin-bottom: 4px; font-size: 13px; }
+    .file-item .remove { color: var(--red); cursor: pointer; font-size: 16px; }
+    
+    .btn { padding: 10px 24px; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+    .btn-primary { background: var(--accent); color: #000; margin-top: 16px; }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+    
+    .upload-status { margin-top: 12px; padding: 10px; border-radius: 6px; font-size: 13px; display: none; }
+    .upload-status.success { display: block; background: rgba(63, 185, 80, 0.1); border: 1px solid var(--green); color: var(--green); }
+    .upload-status.error { display: block; background: rgba(248, 81, 73, 0.1); border: 1px solid var(--red); color: var(--red); }
+    .upload-status.loading { display: block; background: rgba(210, 153, 34, 0.1); border: 1px solid var(--yellow); color: var(--yellow); }
+    
+    /* ── QUEUE STATUS ── */
+    .queue-bar { display: flex; gap: 16px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 24px; font-size: 13px; flex-wrap: wrap; }
+    .queue-stat { display: flex; align-items: center; gap: 6px; }
+    .queue-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .queue-dot.queued { background: var(--text-muted); }
+    .queue-dot.processing { background: var(--yellow); animation: pulse 1.5s infinite; }
+    .queue-dot.done { background: var(--green); }
+    .queue-dot.failed { background: var(--red); }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    
+    /* ── TREE ── */
+    .tree-section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+    .tree-search { width: 100%; padding: 8px 12px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-size: 13px; margin-bottom: 16px; }
+    
+    .tree-node { margin-left: 0; }
+    .tree-node .tree-node { margin-left: 20px; }
+    
+    details { margin-bottom: 2px; }
+    details > summary { list-style: none; cursor: pointer; padding: 4px 8px; border-radius: 4px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+    details > summary:hover { background: var(--surface2); }
+    details > summary::before { content: '▶'; font-size: 10px; color: var(--text-muted); transition: transform 0.15s; display: inline-block; width: 12px; }
+    details[open] > summary::before { transform: rotate(90deg); }
+    
+    .leaf { padding: 4px 8px 4px 28px; font-size: 13px; display: flex; align-items: center; gap: 8px; border-radius: 4px; margin-bottom: 1px; cursor: pointer; }
+    .leaf:hover { background: var(--surface2); }
+    .leaf-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    
+    .badge { font-size: 10px; padding: 1px 6px; border-radius: 10px; font-weight: 600; }
+    .badge-score { background: rgba(88, 166, 255, 0.15); color: var(--accent); }
+    .badge-review { background: rgba(248, 81, 73, 0.15); color: var(--red); }
+    .badge-queued { background: rgba(139, 148, 158, 0.15); color: var(--text-muted); }
+    .badge-processing { background: rgba(210, 153, 34, 0.15); color: var(--yellow); }
+    .badge-done { background: rgba(63, 185, 80, 0.15); color: var(--green); }
+    .badge-failed { background: rgba(248, 81, 73, 0.15); color: var(--red); }
+    
+    .lane-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .lane-cftc { background: var(--accent); }
+    .lane-sec { background: var(--purple); }
+    .lane-gambling { background: var(--green); }
+    .lane-cross { background: var(--text-muted); }
+    
+    /* ── DOCUMENT VIEWER (split panel) ── */
+    .viewer-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 100; }
+    .viewer-overlay.active { display: flex; }
+    .viewer-panel { display: flex; width: 95vw; height: 90vh; margin: auto; background: var(--surface); border-radius: 8px; overflow: hidden; }
+    .viewer-left, .viewer-right { flex: 1; overflow: auto; padding: 20px; }
+    .viewer-left { border-right: 1px solid var(--border); }
+    .viewer-close { position: absolute; top: 20px; right: 30px; font-size: 24px; color: var(--text); cursor: pointer; z-index: 101; background: var(--surface2); width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+    .viewer-left pre { white-space: pre-wrap; font-size: 13px; line-height: 1.6; font-family: 'SF Mono', Monaco, monospace; color: var(--text); }
+    .viewer-right iframe { width: 100%; height: 100%; border: none; background: white; border-radius: 4px; }
+    .viewer-tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+    .viewer-tab { padding: 6px 14px; font-size: 12px; cursor: pointer; color: var(--text-muted); border-bottom: 2px solid transparent; }
+    .viewer-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+    .empty-state p { margin-top: 8px; font-size: 14px; }
+    
+    @media (max-width: 768px) {
+      .form-row { grid-template-columns: 1fr; }
+      .config-row { grid-template-columns: 1fr; }
+      .viewer-panel { flex-direction: column; width: 100vw; height: 100vh; border-radius: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📚 Document Intake Pipeline</h1>
+    <p class="subtitle">Upload documents, watch them get processed, browse the research tree</p>
+    
+    <!-- Config -->
+    <details class="config-banner">
+      <summary style="cursor:pointer; font-size: 13px; color: var(--text-muted);">⚙️ Configuration (click to set your endpoints)</summary>
+      <div class="config-row" style="margin-top: 12px;">
+        <div>
+          <label>n8n Webhook URL</label>
+          <input type="text" id="cfgWebhook" placeholder="https://your-instance.app.n8n.cloud/webhook/document-intake" />
+        </div>
+        <div>
+          <label>Supabase URL</label>
+          <input type="text" id="cfgSupabaseUrl" placeholder="https://abc123.supabase.co" />
+        </div>
+        <div>
+          <label>Supabase Anon Key (for reading tree data)</label>
+          <input type="text" id="cfgSupabaseKey" placeholder="eyJ..." />
+        </div>
+        <div>
+          <label><button class="btn" style="padding:4px 12px; font-size:12px; background:var(--surface2); color:var(--text); border:1px solid var(--border);" onclick="saveConfig()">Save Config</button></label>
+        </div>
+      </div>
+    </details>
+    
+    <!-- Upload Section -->
+    <h2>📤 Upload Documents</h2>
+    
+    <div class="tabs" id="uploadTabs">
+      <div class="tab active" data-tab="academic">Academic &amp; Research</div>
+      <div class="tab" data-tab="law">Law &amp; Regulation</div>
+      <div class="tab" data-tab="journalism">Journalism &amp; Other</div>
+      <div class="tab" data-tab="cases">Cases &amp; Gambling</div>
+      <div class="tab" data-tab="trades">Trades (Data)</div>
+    </div>
+    
+    <!-- Academic & Research -->
+    <div class="tab-content active" id="tab-academic">
+      <div class="upload-section">
+        <div class="dropzone" id="drop-academic">
+          <p class="big">Drop files here or click to browse</p>
+          <p>.pdf, .docx, .doc, .txt</p>
+          <input type="file" multiple accept=".pdf,.docx,.doc,.txt" style="display:none" />
+        </div>
+        <div class="file-list" id="files-academic"></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Subcategory</label>
+            <select id="sub-academic">
+              <option value="">ROOT</option>
+              <option value="ZIping">ZIping (Priority Stack)</option>
+              <option value="ZIping 2">ZIping 2</option>
+              <option value="PM 2000-2009">Prediction Markets 2000-2009</option>
+              <option value="PM 2010-2021">Prediction Markets 2010-2021</option>
+              <option value="PM 2022+">Prediction Markets 2022+</option>
+              <option value="Insider Manipulation Fraud">Insider, Manipulation, Fraud</option>
+              <option value="Gambling Journal">Gambling Journal</option>
+              <option value="Gambling Journal > Gambling">Gambling Journal > Gambling</option>
+              <option value="Whistle">Whistleblower</option>
+              <option value="Read/OnDeck">Read/OnDeck</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Sub-subcategory (optional)</label>
+            <input type="text" id="subsub-academic" placeholder="e.g., Science, Blog" />
+          </div>
+          <div class="form-group">
+            <label>Notes (optional)</label>
+            <input type="text" id="notes-academic" placeholder="e.g., [Priority], [History of ECs]" />
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="uploadFiles('academic', 'Academic')">Upload Academic Files</button>
+        <div class="upload-status" id="status-academic"></div>
+      </div>
+    </div>
+    
+    <!-- Law & Regulation -->
+    <div class="tab-content" id="tab-law">
+      <div class="upload-section">
+        <div class="dropzone" id="drop-law">
+          <p class="big">Drop files here or click to browse</p>
+          <p>.pdf, .docx, .doc, .txt</p>
+          <input type="file" multiple accept=".pdf,.docx,.doc,.txt" style="display:none" />
+        </div>
+        <div class="file-list" id="files-law"></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Subcategory</label>
+            <select id="sub-law">
+              <option value="">ROOT</option>
+              <option value="Commodities Laws">Commodities Laws</option>
+              <option value="CFTC Advisory">CFTC Advisory Publications</option>
+              <option value="Reports">Reports</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Sub-subcategory (optional)</label>
+            <input type="text" id="subsub-law" placeholder="" />
+          </div>
+          <div class="form-group">
+            <label>Notes (optional)</label>
+            <input type="text" id="notes-law" placeholder="" />
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="uploadFiles('law', 'Black Law')">Upload Law Files</button>
+        <div class="upload-status" id="status-law"></div>
+      </div>
+    </div>
+    
+    <!-- Journalism & Other -->
+    <div class="tab-content" id="tab-journalism">
+      <div class="upload-section">
+        <div class="dropzone" id="drop-journalism">
+          <p class="big">Drop files here or click to browse</p>
+          <p>.pdf, .docx, .doc, .txt</p>
+          <input type="file" multiple accept=".pdf,.docx,.doc,.txt" style="display:none" />
+        </div>
+        <div class="file-list" id="files-journalism"></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Category</label>
+            <select id="sub-journalism">
+              <option value="Journalism">Journalism</option>
+              <option value="Loper Bright">Loper Bright</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Sub-subcategory (optional)</label>
+            <input type="text" id="subsub-journalism" placeholder="" />
+          </div>
+          <div class="form-group">
+            <label>Notes (optional)</label>
+            <input type="text" id="notes-journalism" placeholder="" />
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="uploadFiles('journalism', null)">Upload Files</button>
+        <div class="upload-status" id="status-journalism"></div>
+      </div>
+    </div>
+    
+    <!-- Cases & Gambling -->
+    <div class="tab-content" id="tab-cases">
+      <div class="upload-section">
+        <div class="dropzone" id="drop-cases">
+          <p class="big">Drop files here or click to browse</p>
+          <p>.pdf, .docx, .doc, .txt</p>
+          <input type="file" multiple accept=".pdf,.docx,.doc,.txt" style="display:none" />
+        </div>
+        <div class="file-list" id="files-cases"></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Category</label>
+            <select id="cat-cases" onchange="updateCasesSubs()">
+              <option value="Cases">Cases</option>
+              <option value="Gambling">Gambling</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Subcategory</label>
+            <select id="sub-cases">
+              <option value="">ROOT</option>
+              <option value="SECREG">SecReg Summaries</option>
+              <option value="SecReg Brief">SecReg Brief (Combined)</option>
+              <option value="SecReg Brief 2">SecReg Brief 2</option>
+              <option value="Gaming Law Class Summaries">Gaming Law Class Summaries</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Notes (optional)</label>
+            <input type="text" id="notes-cases" placeholder="" />
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="uploadFiles('cases', null)">Upload Files</button>
+        <div class="upload-status" id="status-cases"></div>
+      </div>
+    </div>
+    
+    <!-- Trades (Data) -->
+    <div class="tab-content" id="tab-trades">
+      <div class="upload-section">
+        <div class="dropzone" id="drop-trades">
+          <p class="big">Drop spreadsheet files here</p>
+          <p>.xlsx, .xls, .csv, .tsv — stored as-is, no AI processing</p>
+          <input type="file" multiple accept=".xlsx,.xls,.csv,.tsv" style="display:none" />
+        </div>
+        <div class="file-list" id="files-trades"></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Subcategory (optional)</label>
+            <input type="text" id="sub-trades" placeholder="" />
+          </div>
+          <div class="form-group">
+            <label>Notes (optional)</label>
+            <input type="text" id="notes-trades" placeholder="" />
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="uploadFiles('trades', 'Trades')">Upload Trade Files</button>
+        <div class="upload-status" id="status-trades"></div>
+      </div>
+    </div>
+    
+    <!-- Queue Status -->
+    <div class="queue-bar" id="queueBar">
+      <div class="queue-stat"><div class="queue-dot queued"></div> <span id="qQueued">0</span> queued</div>
+      <div class="queue-stat"><div class="queue-dot processing"></div> <span id="qProcessing">0</span> processing</div>
+      <div class="queue-stat"><div class="queue-dot done"></div> <span id="qDone">0</span> done</div>
+      <div class="queue-stat"><div class="queue-dot failed"></div> <span id="qFailed">0</span> failed</div>
+    </div>
+    
+    <!-- Tree Section -->
+    <h2>🌳 Research Library Tree</h2>
+    <div class="tree-section">
+      <input type="text" class="tree-search" id="treeSearch" placeholder="Search documents by title, theme, claim..." oninput="filterTree()" />
+      <div id="treeContainer">
+        <div class="empty-state">
+          <p>📭</p>
+          <p>No documents yet. Upload some files above to get started.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Document Viewer Overlay -->
+  <div class="viewer-overlay" id="viewer">
+    <div class="viewer-close" onclick="closeViewer()">✕</div>
+    <div class="viewer-panel">
+      <div class="viewer-left">
+        <div class="viewer-tab-bar">
+          <div class="viewer-tab active" onclick="showViewerTab('mindmap')">Mind Map Summary</div>
+          <div class="viewer-tab" onclick="showViewerTab('text')">Extracted Text</div>
+        </div>
+        <div id="viewerMindmap"><pre id="viewerMindmapContent">Loading...</pre></div>
+        <div id="viewerText" style="display:none"><pre id="viewerTextContent">Loading...</pre></div>
+      </div>
+      <div class="viewer-right">
+        <iframe id="viewerPdf" src="about:blank"></iframe>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // ══════════════════════════════════════════════════════════
+    // CONFIG
+    // ══════════════════════════════════════════════════════════
+    let CONFIG = {
+      webhookUrl: localStorage.getItem('cfg_webhook') || '',
+      supabaseUrl: localStorage.getItem('cfg_supabase_url') || '',
+      supabaseKey: localStorage.getItem('cfg_supabase_key') || '',
+    };
+    
+    function loadConfig() {
+      document.getElementById('cfgWebhook').value = CONFIG.webhookUrl;
+      document.getElementById('cfgSupabaseUrl').value = CONFIG.supabaseUrl;
+      document.getElementById('cfgSupabaseKey').value = CONFIG.supabaseKey;
+    }
+    
+    function saveConfig() {
+      CONFIG.webhookUrl = document.getElementById('cfgWebhook').value.trim();
+      CONFIG.supabaseUrl = document.getElementById('cfgSupabaseUrl').value.trim();
+      CONFIG.supabaseKey = document.getElementById('cfgSupabaseKey').value.trim();
+      localStorage.setItem('cfg_webhook', CONFIG.webhookUrl);
+      localStorage.setItem('cfg_supabase_url', CONFIG.supabaseUrl);
+      localStorage.setItem('cfg_supabase_key', CONFIG.supabaseKey);
+      alert('Config saved! Tree will refresh.');
+      loadTree();
+    }
+    
+    // ══════════════════════════════════════════════════════════
+    // TABS
+    // ══════════════════════════════════════════════════════════
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+      });
+    });
+    
+    // ══════════════════════════════════════════════════════════
+    // CASES/GAMBLING SUBCATEGORY SWITCHER
+    // ══════════════════════════════════════════════════════════
+    function updateCasesSubs() {
+      const cat = document.getElementById('cat-cases').value;
+      const subSelect = document.getElementById('sub-cases');
+      subSelect.innerHTML = '';
+      if (cat === 'Cases') {
+        subSelect.innerHTML = `
+          <option value="">ROOT</option>
+          <option value="SECREG">SecReg Summaries</option>
+          <option value="SecReg Brief">SecReg Brief (Combined)</option>
+          <option value="SecReg Brief 2">SecReg Brief 2</option>
+        `;
+      } else {
+        subSelect.innerHTML = `
+          <option value="">ROOT</option>
+          <option value="Gaming Law Class Summaries">Gaming Law Class Summaries</option>
+        `;
+      }
+    }
+    
+    // ══════════════════════════════════════════════════════════
+    // HTML ESCAPE HELPER (prevents XSS)
+    // ══════════════════════════════════════════════════════════
+    function esc(s) {
+      if (!s) return '';
+      const d = document.createElement('div');
+      d.textContent = String(s);
+      return d.innerHTML;
+    }
+    
+    // ══════════════════════════════════════════════════════════
+    // FILE UPLOAD (drag & drop + click)
+    // ══════════════════════════════════════════════════════════
+    const fileStore = { academic: [], law: [], journalism: [], cases: [], trades: [] };
+    
+    ['academic', 'law', 'journalism', 'cases', 'trades'].forEach(section => {
+      const dropzone = document.getElementById('drop-' + section);
+      const input = dropzone.querySelector('input[type="file"]');
+      
+      dropzone.addEventListener('click', () => input.click());
+      dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+      dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+      dropzone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+        addFiles(section, e.dataTransfer.files);
+      });
+      input.addEventListener('change', () => { addFiles(section, input.files); input.value = ''; });
+    });
+    
+    function addFiles(section, fileList) {
+      for (const f of fileList) {
+        if (!fileStore[section].find(x => x.name === f.name)) {
+          fileStore[section].push(f);
+        }
+      }
+      renderFileList(section);
+    }
+    
+    function removeFile(section, idx) {
+      fileStore[section].splice(idx, 1);
+      renderFileList(section);
+    }
+    
+    function renderFileList(section) {
+      const el = document.getElementById('files-' + section);
+      el.innerHTML = fileStore[section].map((f, i) =>
+        `<div class="file-item"><span>${f.name} (${(f.size/1024).toFixed(0)} KB)</span><span class="remove" onclick="removeFile('${section}', ${i})">✕</span></div>`
+      ).join('');
+    }
+    
+    // ══════════════════════════════════════════════════════════
+    // UPLOAD TO N8N WEBHOOK
+    // ══════════════════════════════════════════════════════════
+    async function uploadFiles(section, defaultCategory) {
+      const statusEl = document.getElementById('status-' + section);
+      const files = fileStore[section];
+      
+      if (!files.length) {
+        statusEl.className = 'upload-status error';
+        statusEl.textContent = 'No files selected';
+        return;
+      }
+      if (!CONFIG.webhookUrl) {
+        statusEl.className = 'upload-status error';
+        statusEl.textContent = 'Set your n8n Webhook URL in the config above';
+        return;
+      }
+      
+      // Determine category
+      let category = defaultCategory;
+      let subcategory, subSubcategory, notes;
+      
+      if (section === 'academic') {
+        category = 'Academic';
+        subcategory = document.getElementById('sub-academic').value;
+        subSubcategory = document.getElementById('subsub-academic').value;
+        notes = document.getElementById('notes-academic').value;
+      } else if (section === 'law') {
+        category = 'Black Law';
+        subcategory = document.getElementById('sub-law').value;
+        subSubcategory = document.getElementById('subsub-law').value;
+        notes = document.getElementById('notes-law').value;
+      } else if (section === 'journalism') {
+        category = document.getElementById('sub-journalism').value; // category is in the "sub" dropdown here
+        subcategory = '';
+        subSubcategory = document.getElementById('subsub-journalism').value;
+        notes = document.getElementById('notes-journalism').value;
+      } else if (section === 'cases') {
+        category = document.getElementById('cat-cases').value;
+        subcategory = document.getElementById('sub-cases').value;
+        notes = document.getElementById('notes-cases').value;
+      } else if (section === 'trades') {
+        category = 'Trades';
+        subcategory = document.getElementById('sub-trades').value;
+        notes = document.getElementById('notes-trades').value;
+      }
+      
+      statusEl.className = 'upload-status loading';
+      statusEl.textContent = `Reading ${files.length} files...`;
+      
+      try {
+        // Read all files as base64
+        const fileData = await Promise.all(files.map(f => new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve({ name: f.name, base64: reader.result.split(',')[1], mimeType: f.type });
+          reader.onerror = reject;
+          reader.readAsDataURL(f);
+        })));
+        
+        statusEl.textContent = `Uploading ${files.length} files to pipeline...`;
+        
+        const resp = await fetch(CONFIG.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            files: fileData,
+            category,
+            subcategory: subcategory || null,
+            sub_subcategory: subSubcategory || null,
+            notes: notes || null,
+          }),
+        });
+        
+        if (!resp.ok) throw new Error('Webhook returned ' + resp.status);
+        const result = await resp.json();
+        
+        statusEl.className = 'upload-status success';
+        statusEl.textContent = `✓ ${result.queued_count || files.length} documents queued! Batch: ${result.batch_id || 'unknown'}`;
+        fileStore[section] = [];
+        renderFileList(section);
+        
+        // Start polling queue status
+        pollQueueStatus();
+        setTimeout(loadTree, 3000);
+      } catch (err) {
+        statusEl.className = 'upload-status error';
+        statusEl.textContent = 'Upload failed: ' + err.message;
+      }
+    }
+    
+    // ══════════════════════════════════════════════════════════
+    // QUEUE STATUS POLLING
+    // ══════════════════════════════════════════════════════════
+    let pollInterval = null;
+    
+    async function pollQueueStatus() {
+      if (!CONFIG.supabaseUrl || !CONFIG.supabaseKey) return;
+      
+      try {
+        const resp = await fetch(CONFIG.supabaseUrl + '/rest/v1/queue_status', {
+          headers: { 'apikey': CONFIG.supabaseKey, 'Authorization': 'Bearer ' + CONFIG.supabaseKey }
+        });
+        const data = await resp.json();
+        
+        const counts = { queued: 0, processing: 0, done: 0, failed: 0 };
+        for (const row of data) {
+          if (['queued'].includes(row.status)) counts.queued += row.doc_count;
+          else if (['extracting', 'ocr_needed', 'cleaning', 'routing', 'summarizing', 'checking', 'storing'].includes(row.status)) counts.processing += row.doc_count;
+          else if (row.status === 'done') counts.done += row.doc_count;
+          else if (row.status === 'failed') counts.failed += row.doc_count;
+        }
+        
+        document.getElementById('qQueued').textContent = counts.queued;
+        document.getElementById('qProcessing').textContent = counts.processing;
+        document.getElementById('qDone').textContent = counts.done;
+        document.getElementById('qFailed').textContent = counts.failed;
+        
+        // Keep polling if there's work in progress
+        if (counts.queued > 0 || counts.processing > 0) {
+          if (!pollInterval) pollInterval = setInterval(() => { pollQueueStatus(); loadTree(); }, 10000);
+        } else {
+          if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+        }
+      } catch (e) { /* silent */ }
+    }
+    
+    // ══════════════════════════════════════════════════════════
+    // TREE RENDERING
+    // ══════════════════════════════════════════════════════════
+    let treeData = [];
+    
+    async function loadTree() {
+      if (!CONFIG.supabaseUrl || !CONFIG.supabaseKey) return;
+      
+      try {
+        // Try the cached tree_data.json first
+        let data;
+        try {
+          const cacheResp = await fetch(CONFIG.supabaseUrl + '/storage/v1/object/public/tree_cache/tree_data.json');
+          if (cacheResp.ok) data = await cacheResp.json();
+        } catch (e) {}
+        
+        // Fallback to direct query
+        if (!data) {
+          const resp = await fetch(CONFIG.supabaseUrl + '/rest/v1/tree_data', {
+            headers: { 'apikey': CONFIG.supabaseKey, 'Authorization': 'Bearer ' + CONFIG.supabaseKey }
+          });
+          data = await resp.json();
+        }
+        
+        treeData = data || [];
+        renderTree(treeData);
+      } catch (e) {
+        console.error('Tree load failed:', e);
+      }
+    }
+    
+    function renderTree(data) {
+      const container = document.getElementById('treeContainer');
+      if (!data || data.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>📭</p><p>No documents yet. Upload some files above to get started.</p></div>';
+        return;
+      }
+      
+      // Build nested structure
+      const tree = {};
+      for (const doc of data) {
+        const cat = doc.category || 'Uncategorized';
+        const sub = doc.subcategory || 'ROOT';
+        const subsub = doc.sub_subcategory || null;
+        
+        if (!tree[cat]) tree[cat] = {};
+        if (!tree[cat][sub]) tree[cat][sub] = {};
+        const key = subsub || '__docs__';
+        if (subsub) {
+          if (!tree[cat][sub][subsub]) tree[cat][sub][subsub] = [];
+          tree[cat][sub][subsub].push(doc);
+        } else {
+          if (!tree[cat][sub]['__docs__']) tree[cat][sub]['__docs__'] = [];
+          tree[cat][sub]['__docs__'].push(doc);
+        }
+      }
+      
+      let html = '';
+      for (const [cat, subs] of Object.entries(tree).sort()) {
+        html += `<details open class="tree-node"><summary><strong>${esc(cat)}</strong> <span style="color:var(--text-muted); font-size:12px">(${countDocs(subs)})</span></summary>`;
+        for (const [sub, subsubs] of Object.entries(subs).sort()) {
+          html += `<details class="tree-node"><summary>${esc(sub)} <span style="color:var(--text-muted); font-size:12px">(${countDocs(subsubs)})</span></summary>`;
+          for (const [key, items] of Object.entries(subsubs).sort()) {
+            if (key === '__docs__') {
+              html += renderLeaves(items);
+            } else {
+              html += `<details class="tree-node"><summary>${esc(key)} <span style="color:var(--text-muted); font-size:12px">(${items.length})</span></summary>`;
+              html += renderLeaves(items);
+              html += '</details>';
+            }
+          }
+          html += '</details>';
+        }
+        html += '</details>';
+      }
+      container.innerHTML = html;
+    }
+    
+    function countDocs(obj) {
+      let count = 0;
+      for (const v of Object.values(obj)) {
+        if (Array.isArray(v)) count += v.length;
+        else count += countDocs(v);
+      }
+      return count;
+    }
+    
+    function renderLeaves(docs) {
+      return docs.map((doc, idx) => {
+        const title = doc.title || doc.original_filename || doc.filename;
+        const status = doc.status || 'queued';
+        const lane = (doc.doctrinal_lanes || [])[0];
+        const laneClass = lane === 'cftc_commodities' ? 'lane-cftc' : lane === 'sec_securities' ? 'lane-sec' : lane === 'gambling' ? 'lane-gambling' : 'lane-cross';
+        
+        let badges = '';
+        if (status === 'failed') badges += `<span class="badge badge-failed">FAILED</span> `;
+        else if (status === 'queued') badges += `<span class="badge badge-queued">queued</span> `;
+        else if (status === 'processing') badges += `<span class="badge badge-processing">processing</span> `;
+        else if (doc.needs_review) badges += `<span class="badge badge-review">⚠ review</span> `;
+        
+        if (doc.relevance_score) badges += `<span class="badge badge-score">${esc(String(doc.relevance_score))}/10</span> `;
+        
+        // Store click data as a base64-encoded data attribute to avoid quote/XSS issues
+        const clickData = btoa(JSON.stringify({ original_url: doc.original_url, summary_url: doc.summary_url, extracted_text_url: doc.extracted_text_url, title, error_message: doc.error_message }));
+        const searchText = esc((title + ' ' + (doc.key_claims||[]).join(' ') + ' ' + (doc.sub_themes||[]).join(' ')).toLowerCase());
+        
+        return `<div class="leaf" data-search="${searchText}" data-viewer="${clickData}" onclick="openViewer(atob(this.dataset.viewer))">
+          ${lane ? '<div class="lane-dot ' + laneClass + '"></div>' : ''}
+          <span class="leaf-title">${esc(title)}</span>
+          ${badges}
+          ${doc.year ? '<span style="color:var(--text-muted); font-size:11px">' + esc(String(doc.year)) + '</span>' : ''}
+        </div>`;
+      }).join('');
+    }
+    
+    function filterTree() {
+      const query = document.getElementById('treeSearch').value.toLowerCase();
+      document.querySelectorAll('.leaf').forEach(leaf => {
+        const match = !query || leaf.dataset.search.includes(query);
+        leaf.style.display = match ? '' : 'none';
+      });
+    }
+    
+    // ══════════════════════════════════════════════════════════
+    // DOCUMENT VIEWER
+    // ══════════════════════════════════════════════════════════
+    function openViewer(dataStr) {
+      const data = JSON.parse(dataStr);
+      document.getElementById('viewer').classList.add('active');
+      
+      if (data.error_message) {
+        document.getElementById('viewerMindmapContent').textContent = '❌ PROCESSING FAILED\n\n' + data.error_message;
+        document.getElementById('viewerPdf').src = 'about:blank';
+        return;
+      }
+      
+      // Load mind map
+      if (data.summary_url) {
+        fetch(data.summary_url).then(r => r.text()).then(text => {
+          document.getElementById('viewerMindmapContent').textContent = text;
+        }).catch(() => {
+          document.getElementById('viewerMindmapContent').textContent = 'Summary not available yet';
+        });
+      } else {
+        document.getElementById('viewerMindmapContent').textContent = 'Summary not available yet (document may still be processing)';
+      }
+      
+      // Load extracted text
+      if (data.extracted_text_url) {
+        fetch(data.extracted_text_url).then(r => r.text()).then(text => {
+          document.getElementById('viewerTextContent').textContent = text;
+        }).catch(() => {
+          document.getElementById('viewerTextContent').textContent = 'Extracted text not available';
+        });
+      }
+      
+      // Load PDF
+      if (data.original_url) {
+        document.getElementById('viewerPdf').src = data.original_url;
+      } else {
+        document.getElementById('viewerPdf').src = 'about:blank';
+      }
+    }
+    
+    function closeViewer() {
+      document.getElementById('viewer').classList.remove('active');
+      document.getElementById('viewerPdf').src = 'about:blank';
+    }
+    
+    function showViewerTab(tab) {
+      document.querySelectorAll('.viewer-tab').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('viewerMindmap').style.display = tab === 'mindmap' ? '' : 'none';
+      document.getElementById('viewerText').style.display = tab === 'text' ? '' : 'none';
+    }
+    
+    // Close viewer on escape
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeViewer(); });
+    
+    // ══════════════════════════════════════════════════════════
+    // INIT
+    // ══════════════════════════════════════════════════════════
+    loadConfig();
+    loadTree();
+    pollQueueStatus();
+    // Auto-refresh tree every 30 seconds
+    setInterval(loadTree, 30000);
+  </script>
+</body>
+</html>
