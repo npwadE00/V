@@ -1,833 +1,2091 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Document Intake Pipeline</title>
-  <style>
-    :root {
-      --bg: #0d1117;
-      --surface: #161b22;
-      --surface2: #21262d;
-      --border: #30363d;
-      --text: #e6edf3;
-      --text-muted: #8b949e;
-      --accent: #58a6ff;
-      --green: #3fb950;
-      --yellow: #d29922;
-      --red: #f85149;
-      --purple: #bc8cff;
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
-    
-    .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
-    h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
-    h2 { font-size: 18px; font-weight: 600; margin-bottom: 12px; color: var(--accent); }
-    .subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
-    
-    /* ── CONFIG BANNER ── */
-    .config-banner { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 24px; }
-    .config-banner input { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 4px; font-size: 13px; width: 100%; margin-top: 4px; font-family: monospace; }
-    .config-banner label { font-size: 12px; color: var(--text-muted); display: block; margin-top: 8px; }
-    .config-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    
-    /* ── TABS ── */
-    .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; }
-    .tab { padding: 10px 20px; font-size: 14px; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; transition: all 0.15s; }
-    .tab:hover { color: var(--text); }
-    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
-    
-    /* ── UPLOAD ZONE ── */
-    .upload-section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 24px; }
-    .dropzone { border: 2px dashed var(--border); border-radius: 8px; padding: 40px; text-align: center; cursor: pointer; transition: all 0.15s; }
-    .dropzone:hover, .dropzone.dragover { border-color: var(--accent); background: rgba(88, 166, 255, 0.05); }
-    .dropzone p { color: var(--text-muted); font-size: 14px; }
-    .dropzone .big { font-size: 16px; color: var(--text); margin-bottom: 4px; }
-    
-    .form-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 16px; }
-    .form-group { display: flex; flex-direction: column; gap: 4px; }
-    .form-group label { font-size: 12px; color: var(--text-muted); }
-    select, input[type="text"], textarea { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 8px 10px; border-radius: 4px; font-size: 13px; font-family: inherit; }
-    textarea { resize: vertical; min-height: 60px; }
-    
-    .file-list { margin-top: 12px; max-height: 200px; overflow-y: auto; }
-    .file-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: var(--surface2); border-radius: 4px; margin-bottom: 4px; font-size: 13px; }
-    .file-item .remove { color: var(--red); cursor: pointer; font-size: 16px; }
-    
-    .btn { padding: 10px 24px; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
-    .btn-primary { background: var(--accent); color: #000; margin-top: 16px; }
-    .btn-primary:hover { opacity: 0.9; }
-    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
-    
-    .upload-status { margin-top: 12px; padding: 10px; border-radius: 6px; font-size: 13px; display: none; }
-    .upload-status.success { display: block; background: rgba(63, 185, 80, 0.1); border: 1px solid var(--green); color: var(--green); }
-    .upload-status.error { display: block; background: rgba(248, 81, 73, 0.1); border: 1px solid var(--red); color: var(--red); }
-    .upload-status.loading { display: block; background: rgba(210, 153, 34, 0.1); border: 1px solid var(--yellow); color: var(--yellow); }
-    
-    /* ── QUEUE STATUS ── */
-    .queue-bar { display: flex; gap: 16px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 24px; font-size: 13px; flex-wrap: wrap; }
-    .queue-stat { display: flex; align-items: center; gap: 6px; }
-    .queue-dot { width: 8px; height: 8px; border-radius: 50%; }
-    .queue-dot.queued { background: var(--text-muted); }
-    .queue-dot.processing { background: var(--yellow); animation: pulse 1.5s infinite; }
-    .queue-dot.done { background: var(--green); }
-    .queue-dot.failed { background: var(--red); }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-    
-    /* ── TREE ── */
-    .tree-section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
-    .tree-search { width: 100%; padding: 8px 12px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-size: 13px; margin-bottom: 16px; }
-    
-    .tree-node { margin-left: 0; }
-    .tree-node .tree-node { margin-left: 20px; }
-    
-    details { margin-bottom: 2px; }
-    details > summary { list-style: none; cursor: pointer; padding: 4px 8px; border-radius: 4px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
-    details > summary:hover { background: var(--surface2); }
-    details > summary::before { content: '▶'; font-size: 10px; color: var(--text-muted); transition: transform 0.15s; display: inline-block; width: 12px; }
-    details[open] > summary::before { transform: rotate(90deg); }
-    
-    .leaf { padding: 4px 8px 4px 28px; font-size: 13px; display: flex; align-items: center; gap: 8px; border-radius: 4px; margin-bottom: 1px; cursor: pointer; }
-    .leaf:hover { background: var(--surface2); }
-    .leaf-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    
-    .badge { font-size: 10px; padding: 1px 6px; border-radius: 10px; font-weight: 600; }
-    .badge-score { background: rgba(88, 166, 255, 0.15); color: var(--accent); }
-    .badge-review { background: rgba(248, 81, 73, 0.15); color: var(--red); }
-    .badge-queued { background: rgba(139, 148, 158, 0.15); color: var(--text-muted); }
-    .badge-processing { background: rgba(210, 153, 34, 0.15); color: var(--yellow); }
-    .badge-done { background: rgba(63, 185, 80, 0.15); color: var(--green); }
-    .badge-failed { background: rgba(248, 81, 73, 0.15); color: var(--red); }
-    
-    .lane-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-    .lane-cftc { background: var(--accent); }
-    .lane-sec { background: var(--purple); }
-    .lane-gambling { background: var(--green); }
-    .lane-cross { background: var(--text-muted); }
-    
-    /* ── DOCUMENT VIEWER (split panel) ── */
-    .viewer-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 100; }
-    .viewer-overlay.active { display: flex; }
-    .viewer-panel { display: flex; width: 95vw; height: 90vh; margin: auto; background: var(--surface); border-radius: 8px; overflow: hidden; }
-    .viewer-left, .viewer-right { flex: 1; overflow: auto; padding: 20px; }
-    .viewer-left { border-right: 1px solid var(--border); }
-    .viewer-close { position: absolute; top: 20px; right: 30px; font-size: 24px; color: var(--text); cursor: pointer; z-index: 101; background: var(--surface2); width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-    .viewer-left pre { white-space: pre-wrap; font-size: 13px; line-height: 1.6; font-family: 'SF Mono', Monaco, monospace; color: var(--text); }
-    .viewer-right iframe { width: 100%; height: 100%; border: none; background: white; border-radius: 4px; }
-    .viewer-tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
-    .viewer-tab { padding: 6px 14px; font-size: 12px; cursor: pointer; color: var(--text-muted); border-bottom: 2px solid transparent; }
-    .viewer-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-    
-    .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
-    .empty-state p { margin-top: 8px; font-size: 14px; }
-    
-    @media (max-width: 768px) {
-      .form-row { grid-template-columns: 1fr; }
-      .config-row { grid-template-columns: 1fr; }
-      .viewer-panel { flex-direction: column; width: 100vw; height: 100vh; border-radius: 0; }
-    }
-  </style>
+<!--
+   ______                            __
+  / ____/___  ____ ___  ____  __  __/ /____  _____
+ / /   / __ \/ __ `__ \/ __ \/ / / / __/ _ \/ ___/
+/ /___/ /_/ / / / / / / /_/ / /_/ / /_/  __/ /
+\____/\____/_/ /_/ /_/ .___/\__,_/\__/\___/_/
+                    /_/
+        Created with Perplexity Computer
+        https://www.perplexity.ai/computer
+-->
+
+<!-- Perplexity Computer Attribution — SEO Meta Tags -->
+<meta name="generator" content="Perplexity Computer">
+<meta name="author" content="Perplexity Computer">
+<meta property="og:see_also" content="https://www.perplexity.ai/computer">
+<link rel="author" href="https://www.perplexity.ai/computer">
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wade Legal Research System</title>
+<style>
+/* ===== CSS RESET & VARIABLES ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-canvas: #0d1117;
+  --bg-surface: #161b22;
+  --bg-surface-raised: #1c2129;
+  --bg-overlay: #21262d;
+  --border-default: #30363d;
+  --border-muted: #21262d;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --accent-blue: #58a6ff;
+  --accent-green: #3fb950;
+  --accent-yellow: #d29922;
+  --accent-red: #f85149;
+  --accent-purple: #bc8cff;
+  --accent-orange: #db6d28;
+  --accent-cyan: #39d2c0;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 3px 6px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html { font-size: 14px; }
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  line-height: 1.5;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+a { color: var(--accent-blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-canvas); }
+::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ===== CONFIG BANNER ===== */
+.config-banner {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-default);
+}
+.config-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 12px;
+  user-select: none;
+}
+.config-toggle:hover { color: var(--text-primary); }
+.config-toggle svg {
+  transition: transform var(--transition-fast);
+  width: 12px; height: 12px;
+}
+.config-toggle.open svg { transform: rotate(90deg); }
+.config-fields {
+  display: none;
+  padding: 0 20px 12px;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.config-fields.open { display: flex; }
+.config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1 1 220px;
+  max-width: 400px;
+}
+.config-field label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+.config-field input {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+.config-field input:focus { border-color: var(--accent-blue); }
+
+/* ===== HEADER / NAV ===== */
+.app-header {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-default);
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  height: 48px;
+  gap: 24px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.app-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.app-logo svg { width: 24px; height: 24px; color: var(--accent-blue); }
+.app-nav {
+  display: flex;
+  gap: 2px;
+  height: 100%;
+}
+.nav-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: 100%;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+  user-select: none;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+}
+.nav-tab:hover { color: var(--text-primary); }
+.nav-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent-blue);
+}
+.nav-tab svg { width: 16px; height: 16px; }
+.header-spacer { flex: 1; }
+.header-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-green);
+  display: inline-block;
+}
+.status-dot.disconnected { background: var(--accent-red); }
+.status-dot.loading {
+  background: var(--accent-yellow);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* ===== SHARED COMPONENTS ===== */
+.view { display: none; padding: 24px 20px; max-width: 1400px; margin: 0 auto; }
+.view.active { display: block; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border-default);
+  background: var(--bg-overlay);
+  color: var(--text-primary);
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  font-family: var(--font-sans);
+}
+.btn:hover { background: var(--border-default); }
+.btn:active { transform: scale(0.98); }
+.btn-primary {
+  background: #238636;
+  border-color: rgba(240,246,252,0.1);
+  color: #fff;
+}
+.btn-primary:hover { background: #2ea043; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-danger { color: var(--accent-red); }
+.btn-danger:hover { background: rgba(248,81,73,0.15); border-color: var(--accent-red); }
+.btn-sm { padding: 3px 10px; font-size: 12px; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.badge-blue { background: rgba(88,166,255,0.15); color: var(--accent-blue); }
+.badge-green { background: rgba(63,185,80,0.15); color: var(--accent-green); }
+.badge-yellow { background: rgba(210,153,34,0.15); color: var(--accent-yellow); }
+.badge-red { background: rgba(248,81,73,0.15); color: var(--accent-red); }
+.badge-purple { background: rgba(188,140,255,0.15); color: var(--accent-purple); }
+.badge-orange { background: rgba(219,109,40,0.15); color: var(--accent-orange); }
+.badge-cyan { background: rgba(57,210,192,0.15); color: var(--accent-cyan); }
+.badge-muted { background: var(--bg-overlay); color: var(--text-secondary); }
+
+.pill {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  margin: 2px 3px 2px 0;
+  background: var(--bg-overlay);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+}
+
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.form-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.form-select, .form-input, .form-textarea {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: var(--font-sans);
+  outline: none;
+  transition: border-color var(--transition-fast);
+  width: 100%;
+}
+.form-select:focus, .form-input:focus, .form-textarea:focus {
+  border-color: var(--accent-blue);
+}
+.form-textarea { resize: vertical; min-height: 60px; }
+
+.empty-state {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--text-muted);
+}
+.empty-state svg { width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.4; }
+.empty-state h3 { font-size: 16px; color: var(--text-secondary); margin-bottom: 6px; }
+.empty-state p { font-size: 13px; }
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-default);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== VIEW 1: UPLOAD ===== */
+.upload-layout {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .upload-layout { grid-template-columns: 1fr; }
+}
+
+.dropzone {
+  border: 2px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 48px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  background: var(--bg-surface);
+  position: relative;
+}
+.dropzone:hover, .dropzone.dragover {
+  border-color: var(--accent-blue);
+  background: rgba(88,166,255,0.05);
+}
+.dropzone svg { width: 40px; height: 40px; color: var(--text-muted); margin-bottom: 12px; }
+.dropzone h3 { font-size: 15px; color: var(--text-secondary); margin-bottom: 4px; }
+.dropzone p { font-size: 12px; color: var(--text-muted); }
+.dropzone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.upload-form { display: flex; flex-direction: column; gap: 14px; }
+.upload-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 600px) {
+  .upload-meta-grid { grid-template-columns: 1fr; }
+}
+
+.file-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+}
+.file-item .file-icon { color: var(--text-muted); flex-shrink: 0; }
+.file-item .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-item .file-size { color: var(--text-muted); font-size: 12px; flex-shrink: 0; }
+.file-item .file-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  transition: color var(--transition-fast);
+}
+.file-item .file-remove:hover { color: var(--accent-red); }
+
+.upload-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.upload-status {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.upload-status.success { color: var(--accent-green); }
+.upload-status.error { color: var(--accent-red); }
+.upload-status.loading { color: var(--accent-yellow); }
+
+/* Queue status bar */
+.queue-bar {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+}
+.queue-bar h4 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+.queue-counts {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.queue-count {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.queue-count .count-num {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+}
+.queue-count .count-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.queue-count.queued .count-num { color: var(--text-secondary); }
+.queue-count.processing .count-num { color: var(--accent-yellow); }
+.queue-count.done .count-num { color: var(--accent-green); }
+.queue-count.failed .count-num { color: var(--accent-red); }
+
+.sidebar-panel { display: flex; flex-direction: column; gap: 16px; }
+
+/* ===== VIEW 2: TREE ===== */
+.tree-search {
+  position: sticky;
+  top: 48px;
+  z-index: 50;
+  background: var(--bg-canvas);
+  padding: 12px 0;
+  margin-bottom: 8px;
+}
+.search-input-wrap {
+  position: relative;
+  max-width: 560px;
+}
+.search-input-wrap svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+}
+.search-input-wrap input {
+  width: 100%;
+  padding: 8px 12px 8px 34px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+  font-family: var(--font-sans);
+}
+.search-input-wrap input:focus { border-color: var(--accent-blue); }
+.search-input-wrap input::placeholder { color: var(--text-muted); }
+
+.tree-info-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.tree-container { padding-bottom: 40px; }
+
+.tree-node { margin-left: 0; }
+.tree-node .tree-node { margin-left: 18px; }
+
+.tree-category {
+  border: none;
+  font-family: var(--font-sans);
+}
+.tree-category > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  user-select: none;
+  list-style: none;
+  transition: background var(--transition-fast);
+}
+.tree-category > summary::-webkit-details-marker { display: none; }
+.tree-category > summary::before {
+  content: '';
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 5px solid var(--text-muted);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform var(--transition-fast);
+  flex-shrink: 0;
+}
+.tree-category[open] > summary::before {
+  transform: rotate(90deg);
+}
+.tree-category > summary:hover { background: var(--bg-surface); }
+.tree-category > summary .doc-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.tree-doc-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 28px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  font-size: 13px;
+}
+.tree-doc-item:hover { background: var(--bg-surface); }
+.tree-doc-item .doc-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.tree-doc-item .doc-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.tree-doc-item .doc-badges {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* ===== VIEW 3: DOCUMENT VIEWER ===== */
+.doc-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  background: none;
+  border: 1px solid var(--border-default);
+  margin-bottom: 16px;
+  font-family: var(--font-sans);
+}
+.doc-back-btn:hover { color: var(--text-primary); background: var(--bg-overlay); }
+.doc-back-btn svg { width: 14px; height: 14px; }
+
+.doc-header {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.doc-title-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.doc-title-text {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.3;
+  flex: 1;
+}
+.doc-relevance-badge {
+  font-size: 18px;
+  font-weight: 800;
+  padding: 6px 14px;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.doc-citation {
+  font-size: 14px;
+  color: var(--accent-blue);
+  font-style: italic;
+  margin-bottom: 14px;
+  padding: 8px 12px;
+  background: rgba(88,166,255,0.06);
+  border-left: 3px solid var(--accent-blue);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.doc-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.doc-meta-item { display: flex; flex-direction: column; gap: 3px; }
+.doc-meta-item .meta-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.doc-meta-item .meta-value { font-size: 13px; color: var(--text-primary); }
+
+.doc-pills-section { margin-bottom: 12px; }
+.doc-pills-section .pills-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.doc-pills-row { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.doc-claims-section { margin-bottom: 12px; }
+.doc-claims-section h4 {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.doc-claims-section ul {
+  list-style: none;
+  padding: 0;
+}
+.doc-claims-section li {
+  position: relative;
+  padding-left: 16px;
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.doc-claims-section li::before {
+  content: '•';
+  position: absolute;
+  left: 4px;
+  color: var(--accent-blue);
+}
+
+/* Content tabs */
+.doc-content-tabs {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.content-tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--border-default);
+  overflow-x: auto;
+}
+.content-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  font-family: var(--font-sans);
+}
+.content-tab:hover { color: var(--text-primary); background: var(--bg-surface-raised); }
+.content-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent-blue);
+}
+.content-tab .tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border-default);
+  flex-shrink: 0;
+}
+.content-tab .tab-dot.filled { background: var(--accent-green); }
+
+.content-tab-panel {
+  display: none;
+  padding: 20px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.content-tab-panel.active { display: block; }
+.content-tab-panel .processing-placeholder {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.content-tab-panel .processing-placeholder svg {
+  width: 32px; height: 32px; margin-bottom: 8px; opacity: 0.4;
+}
+
+.content-text {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.content-text.monospace {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  background: var(--bg-canvas);
+  padding: 16px;
+  border-radius: var(--radius-md);
+}
+
+.outline-text h2 {
+  font-size: 16px;
+  margin: 18px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-muted);
+  color: var(--text-primary);
+}
+.outline-text h3 {
+  font-size: 14px;
+  margin: 12px 0 6px;
+  color: var(--text-secondary);
+}
+.outline-text p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.supp-card {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.supp-card h4 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.supp-card .supp-url {
+  font-size: 12px;
+  color: var(--accent-blue);
+  margin-bottom: 8px;
+  display: block;
+}
+.supp-card .supp-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* Quality section */
+.doc-quality-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.quality-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast);
+}
+.quality-header:hover { background: var(--bg-surface-raised); }
+.quality-header h3 { font-size: 14px; font-weight: 600; }
+.quality-body {
+  display: none;
+  padding: 0 16px 14px;
+}
+.quality-body.open { display: block; }
+.gate-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border-muted);
+}
+.gate-item:last-child { border-bottom: none; }
+.gate-icon { font-size: 14px; flex-shrink: 0; width: 20px; text-align: center; }
+.gate-icon.pass { color: var(--accent-green); }
+.gate-icon.fail { color: var(--accent-red); }
+.gate-name { color: var(--text-secondary); }
+
+/* ===== FOOTER ===== */
+.app-footer {
+  text-align: center;
+  padding: 20px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-muted);
+  margin-top: 40px;
+}
+.app-footer a { color: var(--text-muted); }
+.app-footer a:hover { color: var(--text-secondary); }
+
+/* ===== FADE IN ANIMATION ===== */
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.fade-in { animation: fadeIn 0.25s ease-out; }
+</style>
 </head>
 <body>
-  <div class="container">
-    <h1>📚 Document Intake Pipeline</h1>
-    <p class="subtitle">Upload documents, watch them get processed, browse the research tree</p>
-    
-    <!-- Config -->
-    <details class="config-banner">
-      <summary style="cursor:pointer; font-size: 13px; color: var(--text-muted);">⚙️ Configuration (click to set your endpoints)</summary>
-      <div class="config-row" style="margin-top: 12px;">
-        <div>
-          <label>n8n Webhook URL</label>
-          <input type="text" id="cfgWebhook" placeholder="https://your-instance.app.n8n.cloud/webhook/document-intake" />
+
+<!-- CONFIG BANNER -->
+<div class="config-banner">
+  <div class="config-toggle" id="configToggle" onclick="toggleConfig()">
+    <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0zm.75 4.75a.75.75 0 0 0-1.5 0v2.5h-2.5a.75.75 0 0 0 0 1.5h2.5v2.5a.75.75 0 0 0 1.5 0v-2.5h2.5a.75.75 0 0 0 0-1.5h-2.5v-2.5z"/></svg>
+    <svg viewBox="0 0 16 16" fill="currentColor" style="width:10px;height:10px"><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z"/></svg>
+    Configuration
+  </div>
+  <div class="config-fields" id="configFields">
+    <div class="config-field">
+      <label>Supabase URL</label>
+      <input type="text" id="cfgSupabaseUrl" value="https://jzctuqjeajmcvmddpwya.supabase.co" oninput="saveConfig()">
+    </div>
+    <div class="config-field">
+      <label>Supabase Key</label>
+      <input type="password" id="cfgSupabaseKey" value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6Y3R1cWplYWptY3ZtZGRwd3lhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Mzg3MDM0NSwiZXhwIjoyMDg5NDQ2MzQ1fQ.QRVP-X94GTQFhb1CCEFrpRIAiBhmiIPIdBWS1SxETLg" oninput="saveConfig()">
+    </div>
+    <div class="config-field">
+      <label>n8n Webhook URL</label>
+      <input type="text" id="cfgWebhookUrl" value="http://localhost:5678/webhook/document-intake" oninput="saveConfig()">
+    </div>
+    <div class="config-field">
+      <label>GPU Server URL</label>
+      <input type="text" id="cfgGpuUrl" value="http://localhost:3000" oninput="saveConfig()">
+    </div>
+  </div>
+</div>
+
+<!-- HEADER / NAV -->
+<header class="app-header">
+  <div class="app-logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
+      <path d="M8 7h6"/>
+      <path d="M8 11h8"/>
+    </svg>
+    Wade Legal Research
+  </div>
+  <nav class="app-nav">
+    <button class="nav-tab active" data-view="upload" onclick="navigate('upload')">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/><path d="M11.78 4.72a.749.749 0 1 1-1.06 1.06L8.75 3.811V9.5a.75.75 0 0 1-1.5 0V3.811L5.28 5.78a.749.749 0 1 1-1.06-1.06l3.25-3.25a.749.749 0 0 1 1.06 0l3.25 3.25Z"/></svg>
+      Upload
+    </button>
+    <button class="nav-tab" data-view="tree" onclick="navigate('tree')">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.75 7a.75.75 0 0 0 0 1.5h4.5a.75.75 0 0 0 0-1.5h-4.5ZM5 4.75A.75.75 0 0 1 5.75 4h5.5a.75.75 0 0 1 0 1.5h-5.5A.75.75 0 0 1 5 4.75ZM6.75 10a.75.75 0 0 0 0 1.5h2.5a.75.75 0 0 0 0-1.5h-2.5Z"/><path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25Z"/></svg>
+      Research Tree
+    </button>
+  </nav>
+  <div class="header-spacer"></div>
+  <div class="header-status" id="connectionStatus">
+    <span class="status-dot loading"></span>
+    Connecting…
+  </div>
+</header>
+
+<!-- ==================== VIEW 1: UPLOAD ==================== -->
+<main class="view active" id="view-upload">
+  <div class="upload-layout">
+    <div class="upload-form">
+      <!-- Drop Zone -->
+      <div class="dropzone" id="dropzone">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <h3>Drop files here to upload</h3>
+        <p>PDF, DOCX, TXT — or click to browse</p>
+        <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt,.doc,.rtf,.html,.htm">
+        <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none">
+      </div>
+
+      <!-- Category selectors -->
+      <div class="upload-meta-grid">
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <select class="form-select" id="uploadCategory" onchange="onCategoryChange()">
+            <option value="">Select category…</option>
+            <option value="SecReg">SecReg</option>
+            <option value="Prediction Markets/CFTC">Prediction Markets/CFTC</option>
+            <option value="Gambling Law">Gambling Law</option>
+            <option value="Trade Secrets Law">Trade Secrets Law</option>
+            <option value="Privacy Law">Privacy Law</option>
+            <option value="Pro Bono Project">Pro Bono Project</option>
+            <option value="PEEPL">PEEPL</option>
+          </select>
         </div>
-        <div>
-          <label>Supabase URL</label>
-          <input type="text" id="cfgSupabaseUrl" placeholder="https://abc123.supabase.co" />
-        </div>
-        <div>
-          <label>Supabase Anon Key (for reading tree data)</label>
-          <input type="text" id="cfgSupabaseKey" placeholder="eyJ..." />
-        </div>
-        <div>
-          <label><button class="btn" style="padding:4px 12px; font-size:12px; background:var(--surface2); color:var(--text); border:1px solid var(--border);" onclick="saveConfig()">Save Config</button></label>
+        <div class="form-group" id="subcategoryGroup">
+          <label class="form-label">Subcategory</label>
+          <div id="subcategoryContainer">
+            <input class="form-input" id="uploadSubcategoryInput" placeholder="Enter subcategory…" disabled>
+          </div>
         </div>
       </div>
-    </details>
-    
-    <!-- Upload Section -->
-    <h2>📤 Upload Documents</h2>
-    
-    <div class="tabs" id="uploadTabs">
-      <div class="tab active" data-tab="academic">Academic &amp; Research</div>
-      <div class="tab" data-tab="law">Law &amp; Regulation</div>
-      <div class="tab" data-tab="journalism">Journalism &amp; Other</div>
-      <div class="tab" data-tab="cases">Cases &amp; Gambling</div>
-      <div class="tab" data-tab="trades">Trades (Data)</div>
-    </div>
-    
-    <!-- Academic & Research -->
-    <div class="tab-content active" id="tab-academic">
-      <div class="upload-section">
-        <div class="dropzone" id="drop-academic">
-          <p class="big">Drop files here or click to browse</p>
-          <p>.pdf, .docx, .doc, .txt</p>
-          <input type="file" multiple accept=".pdf,.docx,.doc,.txt" style="display:none" />
-        </div>
-        <div class="file-list" id="files-academic"></div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Subcategory</label>
-            <select id="sub-academic">
-              <option value="">ROOT</option>
-              <option value="ZIping">ZIping (Priority Stack)</option>
-              <option value="ZIping 2">ZIping 2</option>
-              <option value="PM 2000-2009">Prediction Markets 2000-2009</option>
-              <option value="PM 2010-2021">Prediction Markets 2010-2021</option>
-              <option value="PM 2022+">Prediction Markets 2022+</option>
-              <option value="Insider Manipulation Fraud">Insider, Manipulation, Fraud</option>
-              <option value="Gambling Journal">Gambling Journal</option>
-              <option value="Gambling Journal > Gambling">Gambling Journal > Gambling</option>
-              <option value="Whistle">Whistleblower</option>
-              <option value="Read/OnDeck">Read/OnDeck</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Sub-subcategory (optional)</label>
-            <input type="text" id="subsub-academic" placeholder="e.g., Science, Blog" />
-          </div>
-          <div class="form-group">
-            <label>Notes (optional)</label>
-            <input type="text" id="notes-academic" placeholder="e.g., [Priority], [History of ECs]" />
-          </div>
-        </div>
-        <button class="btn btn-primary" onclick="uploadFiles('academic', 'Academic')">Upload Academic Files</button>
-        <div class="upload-status" id="status-academic"></div>
+
+      <div class="form-group" id="subsubGroup" style="display:none">
+        <label class="form-label">Sub-subcategory</label>
+        <select class="form-select" id="uploadSubsub">
+          <option value="">Select sub-subcategory…</option>
+        </select>
+      </div>
+
+      <!-- Notes -->
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-textarea" id="uploadNotes" placeholder="Optional notes about these documents…" rows="3"></textarea>
+      </div>
+
+      <!-- File List -->
+      <div id="fileListContainer" style="display:none">
+        <div class="form-label" style="margin-bottom:4px">Queued Files</div>
+        <div class="file-list" id="fileList"></div>
+      </div>
+
+      <!-- Actions -->
+      <div class="upload-actions">
+        <button class="btn btn-primary" id="uploadBtn" onclick="startUpload()" disabled>
+          <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/><path d="M11.78 4.72a.749.749 0 1 1-1.06 1.06L8.75 3.811V9.5a.75.75 0 0 1-1.5 0V3.811L5.28 5.78a.749.749 0 1 1-1.06-1.06l3.25-3.25a.749.749 0 0 1 1.06 0l3.25 3.25Z"/></svg>
+          Upload Documents
+        </button>
+        <button class="btn" onclick="document.getElementById('folderInput').click()" title="Select an entire folder to batch upload">
+          <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z"/></svg>
+          Choose Folder
+        </button>
+        <button class="btn" onclick="clearUpload()">Clear</button>
+        <div class="upload-status" id="uploadStatus"></div>
       </div>
     </div>
-    
-    <!-- Law & Regulation -->
-    <div class="tab-content" id="tab-law">
-      <div class="upload-section">
-        <div class="dropzone" id="drop-law">
-          <p class="big">Drop files here or click to browse</p>
-          <p>.pdf, .docx, .doc, .txt</p>
-          <input type="file" multiple accept=".pdf,.docx,.doc,.txt" style="display:none" />
-        </div>
-        <div class="file-list" id="files-law"></div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Subcategory</label>
-            <select id="sub-law">
-              <option value="">ROOT</option>
-              <option value="Commodities Laws">Commodities Laws</option>
-              <option value="CFTC Advisory">CFTC Advisory Publications</option>
-              <option value="Reports">Reports</option>
-            </select>
+
+    <!-- Sidebar -->
+    <div class="sidebar-panel">
+      <div class="queue-bar">
+        <h4>Pipeline Queue</h4>
+        <div class="queue-counts">
+          <div class="queue-count queued">
+            <span class="count-num" id="qQueued">—</span>
+            <span class="count-label">Queued</span>
           </div>
-          <div class="form-group">
-            <label>Sub-subcategory (optional)</label>
-            <input type="text" id="subsub-law" placeholder="" />
+          <div class="queue-count processing">
+            <span class="count-num" id="qProcessing">—</span>
+            <span class="count-label">Processing</span>
           </div>
-          <div class="form-group">
-            <label>Notes (optional)</label>
-            <input type="text" id="notes-law" placeholder="" />
+          <div class="queue-count done">
+            <span class="count-num" id="qDone">—</span>
+            <span class="count-label">Done</span>
+          </div>
+          <div class="queue-count failed">
+            <span class="count-num" id="qFailed">—</span>
+            <span class="count-label">Failed</span>
           </div>
         </div>
-        <button class="btn btn-primary" onclick="uploadFiles('law', 'Black Law')">Upload Law Files</button>
-        <div class="upload-status" id="status-law"></div>
       </div>
-    </div>
-    
-    <!-- Journalism & Other -->
-    <div class="tab-content" id="tab-journalism">
-      <div class="upload-section">
-        <div class="dropzone" id="drop-journalism">
-          <p class="big">Drop files here or click to browse</p>
-          <p>.pdf, .docx, .doc, .txt</p>
-          <input type="file" multiple accept=".pdf,.docx,.doc,.txt" style="display:none" />
-        </div>
-        <div class="file-list" id="files-journalism"></div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Category</label>
-            <select id="sub-journalism">
-              <option value="Journalism">Journalism</option>
-              <option value="Loper Bright">Loper Bright</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Sub-subcategory (optional)</label>
-            <input type="text" id="subsub-journalism" placeholder="" />
-          </div>
-          <div class="form-group">
-            <label>Notes (optional)</label>
-            <input type="text" id="notes-journalism" placeholder="" />
-          </div>
-        </div>
-        <button class="btn btn-primary" onclick="uploadFiles('journalism', null)">Upload Files</button>
-        <div class="upload-status" id="status-journalism"></div>
-      </div>
-    </div>
-    
-    <!-- Cases & Gambling -->
-    <div class="tab-content" id="tab-cases">
-      <div class="upload-section">
-        <div class="dropzone" id="drop-cases">
-          <p class="big">Drop files here or click to browse</p>
-          <p>.pdf, .docx, .doc, .txt</p>
-          <input type="file" multiple accept=".pdf,.docx,.doc,.txt" style="display:none" />
-        </div>
-        <div class="file-list" id="files-cases"></div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Category</label>
-            <select id="cat-cases" onchange="updateCasesSubs()">
-              <option value="Cases">Cases</option>
-              <option value="Gambling">Gambling</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Subcategory</label>
-            <select id="sub-cases">
-              <option value="">ROOT</option>
-              <option value="SECREG">SecReg Summaries</option>
-              <option value="SecReg Brief">SecReg Brief (Combined)</option>
-              <option value="SecReg Brief 2">SecReg Brief 2</option>
-              <option value="Gaming Law Class Summaries">Gaming Law Class Summaries</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Notes (optional)</label>
-            <input type="text" id="notes-cases" placeholder="" />
-          </div>
-        </div>
-        <button class="btn btn-primary" onclick="uploadFiles('cases', null)">Upload Files</button>
-        <div class="upload-status" id="status-cases"></div>
-      </div>
-    </div>
-    
-    <!-- Trades (Data) -->
-    <div class="tab-content" id="tab-trades">
-      <div class="upload-section">
-        <div class="dropzone" id="drop-trades">
-          <p class="big">Drop spreadsheet files here</p>
-          <p>.xlsx, .xls, .csv, .tsv — stored as-is, no AI processing</p>
-          <input type="file" multiple accept=".xlsx,.xls,.csv,.tsv" style="display:none" />
-        </div>
-        <div class="file-list" id="files-trades"></div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Subcategory (optional)</label>
-            <input type="text" id="sub-trades" placeholder="" />
-          </div>
-          <div class="form-group">
-            <label>Notes (optional)</label>
-            <input type="text" id="notes-trades" placeholder="" />
-          </div>
-        </div>
-        <button class="btn btn-primary" onclick="uploadFiles('trades', 'Trades')">Upload Trade Files</button>
-        <div class="upload-status" id="status-trades"></div>
-      </div>
-    </div>
-    
-    <!-- Queue Status -->
-    <div class="queue-bar" id="queueBar">
-      <div class="queue-stat"><div class="queue-dot queued"></div> <span id="qQueued">0</span> queued</div>
-      <div class="queue-stat"><div class="queue-dot processing"></div> <span id="qProcessing">0</span> processing</div>
-      <div class="queue-stat"><div class="queue-dot done"></div> <span id="qDone">0</span> done</div>
-      <div class="queue-stat"><div class="queue-dot failed"></div> <span id="qFailed">0</span> failed</div>
-    </div>
-    
-    <!-- Tree Section -->
-    <h2>🌳 Research Library Tree</h2>
-    <div class="tree-section">
-      <input type="text" class="tree-search" id="treeSearch" placeholder="Search documents by title, theme, claim..." oninput="filterTree()" />
-      <div id="treeContainer">
-        <div class="empty-state">
-          <p>📭</p>
-          <p>No documents yet. Upload some files above to get started.</p>
+
+      <div class="card">
+        <h4 style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;font-weight:600">Recent Uploads</h4>
+        <div id="recentUploads" class="empty-state" style="padding:20px 0">
+          <p>No recent uploads</p>
         </div>
       </div>
     </div>
   </div>
-  
-  <!-- Document Viewer Overlay -->
-  <div class="viewer-overlay" id="viewer">
-    <div class="viewer-close" onclick="closeViewer()">✕</div>
-    <div class="viewer-panel">
-      <div class="viewer-left">
-        <div class="viewer-tab-bar">
-          <div class="viewer-tab active" onclick="showViewerTab('mindmap')">Mind Map Summary</div>
-          <div class="viewer-tab" onclick="showViewerTab('text')">Extracted Text</div>
-        </div>
-        <div id="viewerMindmap"><pre id="viewerMindmapContent">Loading...</pre></div>
-        <div id="viewerText" style="display:none"><pre id="viewerTextContent">Loading...</pre></div>
-      </div>
-      <div class="viewer-right">
-        <iframe id="viewerPdf" src="about:blank"></iframe>
-      </div>
+</main>
+
+<!-- ==================== VIEW 2: TREE ==================== -->
+<main class="view" id="view-tree">
+  <div class="tree-search">
+    <div class="search-input-wrap">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"/></svg>
+      <input type="text" id="treeSearch" placeholder="Search documents, cases, citations…" oninput="filterTree()">
     </div>
   </div>
-  
-  <script>
-    // ══════════════════════════════════════════════════════════
-    // CONFIG
-    // ══════════════════════════════════════════════════════════
-    let CONFIG = {
-      webhookUrl: localStorage.getItem('cfg_webhook') || '',
-      supabaseUrl: localStorage.getItem('cfg_supabase_url') || '',
-      supabaseKey: localStorage.getItem('cfg_supabase_key') || '',
-    };
-    
-    function loadConfig() {
-      document.getElementById('cfgWebhook').value = CONFIG.webhookUrl;
-      document.getElementById('cfgSupabaseUrl').value = CONFIG.supabaseUrl;
-      document.getElementById('cfgSupabaseKey').value = CONFIG.supabaseKey;
+  <div class="tree-info-bar">
+    <span id="treeDocCount">Loading…</span>
+    <span id="treeLastRefresh"></span>
+  </div>
+  <div class="tree-container" id="treeContainer">
+    <div class="empty-state" id="treeEmpty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+      </svg>
+      <h3>Loading Research Tree…</h3>
+      <p>Fetching documents from Supabase</p>
+    </div>
+  </div>
+</main>
+
+<!-- ==================== VIEW 3: DOCUMENT VIEWER ==================== -->
+<main class="view" id="view-document">
+  <button class="doc-back-btn" onclick="navigateBack()">
+    <svg viewBox="0 0 16 16" fill="currentColor"><path d="M7.78 12.53a.75.75 0 0 1-1.06 0L2.47 8.28a.75.75 0 0 1 0-1.06l4.25-4.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042L4.81 7h7.44a.75.75 0 0 1 0 1.5H4.81l2.97 2.97a.75.75 0 0 1 0 1.06Z"/></svg>
+    Back to Tree
+  </button>
+
+  <div class="doc-header" id="docHeader">
+    <!-- Dynamically filled -->
+  </div>
+
+  <div class="doc-content-tabs" id="docContentTabs">
+    <div class="content-tab-bar" id="contentTabBar">
+      <!-- Dynamically filled -->
+    </div>
+    <div id="contentPanels">
+      <!-- Dynamically filled -->
+    </div>
+  </div>
+
+  <div class="doc-quality-section" id="docQuality" style="display:none">
+    <div class="quality-header" onclick="toggleQuality()">
+      <h3>Quality Gates</h3>
+      <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" id="qualityChevron"><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z"/></svg>
+    </div>
+    <div class="quality-body" id="qualityBody"></div>
+  </div>
+</main>
+
+<!-- FOOTER -->
+<footer class="app-footer">
+  Wade Legal Research System &copy; 2026 &middot;
+  <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a>
+</footer>
+
+<script>
+/* ===================================================================
+   WADE LEGAL RESEARCH SYSTEM — Frontend Application
+   =================================================================== */
+
+// ─── State ───
+const APP = {
+  config: {
+    supabaseUrl: '',
+    supabaseKey: '',
+    webhookUrl: '',
+    gpuUrl: ''
+  },
+  uploadFiles: [],
+  treeData: null,
+  treeDocuments: [],
+  currentDoc: null,
+  currentView: 'upload',
+  treeRefreshTimer: null,
+  queueRefreshTimer: null,
+  previousView: 'tree'
+};
+
+// ─── Subcategory / Sub-subcategory maps ───
+const SUBCATEGORIES = {
+  'Prediction Markets/CFTC': [
+    'Academic', 'Black Law and Regulatory', 'Journalism',
+    'Cases', 'Loper Bright', 'Gambling', 'Misc'
+  ],
+  'Pro Bono Project': ['General', 'Research', 'Cases', 'Documents'],
+  'PEEPL':            ['General', 'Research', 'Cases', 'Documents']
+};
+
+const SUB_SUBCATEGORIES = {
+  'Academic': ['Prediction Markets', 'Insider/Manipulation/Fraud', 'Gambling', 'Whistleblower']
+};
+
+const DOC_TYPE_COLORS = {
+  case_law: 'purple',
+  academic: 'blue',
+  regulatory: 'orange',
+  journalism: 'cyan',
+  legislation: 'yellow',
+  brief: 'green',
+  other: 'muted'
+};
+
+// ─── Init ───
+document.addEventListener('DOMContentLoaded', () => {
+  loadConfig();
+  handleHashRoute();
+  window.addEventListener('hashchange', handleHashRoute);
+  pollQueueStatus();
+  APP.queueRefreshTimer = setInterval(pollQueueStatus, 15000);
+});
+
+// ─── Config ───
+function loadConfig() {
+  const saved = localStorage.getItem('wade_config');
+  if (saved) {
+    try {
+      const c = JSON.parse(saved);
+      APP.config = { ...APP.config, ...c };
+      document.getElementById('cfgSupabaseUrl').value = APP.config.supabaseUrl;
+      document.getElementById('cfgSupabaseKey').value = APP.config.supabaseKey;
+      document.getElementById('cfgWebhookUrl').value = APP.config.webhookUrl;
+      document.getElementById('cfgGpuUrl').value = APP.config.gpuUrl;
+    } catch(e) { /* use defaults */ }
+  }
+  // Read current values from inputs (defaults or saved)
+  readConfigFromInputs();
+  checkConnection();
+}
+
+function readConfigFromInputs() {
+  APP.config.supabaseUrl = document.getElementById('cfgSupabaseUrl').value.replace(/\/+$/, '');
+  APP.config.supabaseKey = document.getElementById('cfgSupabaseKey').value.trim();
+  APP.config.webhookUrl = document.getElementById('cfgWebhookUrl').value.trim();
+  APP.config.gpuUrl = document.getElementById('cfgGpuUrl').value.replace(/\/+$/, '');
+}
+
+function saveConfig() {
+  readConfigFromInputs();
+  localStorage.setItem('wade_config', JSON.stringify(APP.config));
+  checkConnection();
+}
+
+function toggleConfig() {
+  const toggle = document.getElementById('configToggle');
+  const fields = document.getElementById('configFields');
+  toggle.classList.toggle('open');
+  fields.classList.toggle('open');
+}
+
+async function checkConnection() {
+  const el = document.getElementById('connectionStatus');
+  const dot = el.querySelector('.status-dot');
+  if (!APP.config.supabaseUrl || !APP.config.supabaseKey) {
+    dot.className = 'status-dot disconnected';
+    el.querySelector('.status-dot').nextSibling.textContent = ' Not configured';
+    return;
+  }
+  dot.className = 'status-dot loading';
+  try {
+    const r = await supabaseRest('/rest/v1/documents?select=id&limit=1');
+    if (r.ok) {
+      dot.className = 'status-dot';
+      el.lastChild.textContent = ' Connected';
+    } else {
+      dot.className = 'status-dot disconnected';
+      el.lastChild.textContent = ' Error ' + r.status;
     }
-    
-    function saveConfig() {
-      CONFIG.webhookUrl = document.getElementById('cfgWebhook').value.trim();
-      CONFIG.supabaseUrl = document.getElementById('cfgSupabaseUrl').value.trim();
-      CONFIG.supabaseKey = document.getElementById('cfgSupabaseKey').value.trim();
-      localStorage.setItem('cfg_webhook', CONFIG.webhookUrl);
-      localStorage.setItem('cfg_supabase_url', CONFIG.supabaseUrl);
-      localStorage.setItem('cfg_supabase_key', CONFIG.supabaseKey);
-      alert('Config saved! Tree will refresh.');
-      loadTree();
-    }
-    
-    // ══════════════════════════════════════════════════════════
-    // TABS
-    // ══════════════════════════════════════════════════════════
-    document.querySelectorAll('.tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
-      });
-    });
-    
-    // ══════════════════════════════════════════════════════════
-    // CASES/GAMBLING SUBCATEGORY SWITCHER
-    // ══════════════════════════════════════════════════════════
-    function updateCasesSubs() {
-      const cat = document.getElementById('cat-cases').value;
-      const subSelect = document.getElementById('sub-cases');
-      subSelect.innerHTML = '';
-      if (cat === 'Cases') {
-        subSelect.innerHTML = `
-          <option value="">ROOT</option>
-          <option value="SECREG">SecReg Summaries</option>
-          <option value="SecReg Brief">SecReg Brief (Combined)</option>
-          <option value="SecReg Brief 2">SecReg Brief 2</option>
-        `;
-      } else {
-        subSelect.innerHTML = `
-          <option value="">ROOT</option>
-          <option value="Gaming Law Class Summaries">Gaming Law Class Summaries</option>
-        `;
-      }
-    }
-    
-    // ══════════════════════════════════════════════════════════
-    // HTML ESCAPE HELPER (prevents XSS)
-    // ══════════════════════════════════════════════════════════
-    function esc(s) {
-      if (!s) return '';
-      const d = document.createElement('div');
-      d.textContent = String(s);
-      return d.innerHTML;
-    }
-    
-    // ══════════════════════════════════════════════════════════
-    // FILE UPLOAD (drag & drop + click)
-    // ══════════════════════════════════════════════════════════
-    const fileStore = { academic: [], law: [], journalism: [], cases: [], trades: [] };
-    
-    ['academic', 'law', 'journalism', 'cases', 'trades'].forEach(section => {
-      const dropzone = document.getElementById('drop-' + section);
-      const input = dropzone.querySelector('input[type="file"]');
-      
-      dropzone.addEventListener('click', () => input.click());
-      dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
-      dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-      dropzone.addEventListener('drop', e => {
-        e.preventDefault();
-        dropzone.classList.remove('dragover');
-        addFiles(section, e.dataTransfer.files);
-      });
-      input.addEventListener('change', () => { addFiles(section, input.files); input.value = ''; });
-    });
-    
-    function addFiles(section, fileList) {
-      for (const f of fileList) {
-        if (!fileStore[section].find(x => x.name === f.name)) {
-          fileStore[section].push(f);
-        }
-      }
-      renderFileList(section);
-    }
-    
-    function removeFile(section, idx) {
-      fileStore[section].splice(idx, 1);
-      renderFileList(section);
-    }
-    
-    function renderFileList(section) {
-      const el = document.getElementById('files-' + section);
-      el.innerHTML = fileStore[section].map((f, i) =>
-        `<div class="file-item"><span>${f.name} (${(f.size/1024).toFixed(0)} KB)</span><span class="remove" onclick="removeFile('${section}', ${i})">✕</span></div>`
-      ).join('');
-    }
-    
-    // ══════════════════════════════════════════════════════════
-    // UPLOAD TO N8N WEBHOOK
-    // ══════════════════════════════════════════════════════════
-    async function uploadFiles(section, defaultCategory) {
-      const statusEl = document.getElementById('status-' + section);
-      const files = fileStore[section];
-      
-      if (!files.length) {
-        statusEl.className = 'upload-status error';
-        statusEl.textContent = 'No files selected';
-        return;
-      }
-      if (!CONFIG.webhookUrl) {
-        statusEl.className = 'upload-status error';
-        statusEl.textContent = 'Set your n8n Webhook URL in the config above';
-        return;
-      }
-      
-      // Determine category
-      let category = defaultCategory;
-      let subcategory, subSubcategory, notes;
-      
-      if (section === 'academic') {
-        category = 'Academic';
-        subcategory = document.getElementById('sub-academic').value;
-        subSubcategory = document.getElementById('subsub-academic').value;
-        notes = document.getElementById('notes-academic').value;
-      } else if (section === 'law') {
-        category = 'Black Law';
-        subcategory = document.getElementById('sub-law').value;
-        subSubcategory = document.getElementById('subsub-law').value;
-        notes = document.getElementById('notes-law').value;
-      } else if (section === 'journalism') {
-        category = document.getElementById('sub-journalism').value; // category is in the "sub" dropdown here
-        subcategory = '';
-        subSubcategory = document.getElementById('subsub-journalism').value;
-        notes = document.getElementById('notes-journalism').value;
-      } else if (section === 'cases') {
-        category = document.getElementById('cat-cases').value;
-        subcategory = document.getElementById('sub-cases').value;
-        notes = document.getElementById('notes-cases').value;
-      } else if (section === 'trades') {
-        category = 'Trades';
-        subcategory = document.getElementById('sub-trades').value;
-        notes = document.getElementById('notes-trades').value;
-      }
-      
-      statusEl.className = 'upload-status loading';
-      statusEl.textContent = `Reading ${files.length} files...`;
-      
-      try {
-        // Read all files as base64
-        const fileData = await Promise.all(files.map(f => new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve({ name: f.name, base64: reader.result.split(',')[1], mimeType: f.type });
-          reader.onerror = reject;
-          reader.readAsDataURL(f);
-        })));
-        
-        statusEl.textContent = `Uploading ${files.length} files to pipeline...`;
-        
-        const resp = await fetch(CONFIG.webhookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            files: fileData,
-            category,
-            subcategory: subcategory || null,
-            sub_subcategory: subSubcategory || null,
-            notes: notes || null,
-          }),
-        });
-        
-        if (!resp.ok) throw new Error('Webhook returned ' + resp.status);
-        const result = await resp.json();
-        
-        statusEl.className = 'upload-status success';
-        statusEl.textContent = `✓ ${result.queued_count || files.length} documents queued! Batch: ${result.batch_id || 'unknown'}`;
-        fileStore[section] = [];
-        renderFileList(section);
-        
-        // Start polling queue status
-        pollQueueStatus();
-        setTimeout(loadTree, 3000);
-      } catch (err) {
-        statusEl.className = 'upload-status error';
-        statusEl.textContent = 'Upload failed: ' + err.message;
-      }
-    }
-    
-    // ══════════════════════════════════════════════════════════
-    // QUEUE STATUS POLLING
-    // ══════════════════════════════════════════════════════════
-    let pollInterval = null;
-    
-    async function pollQueueStatus() {
-      if (!CONFIG.supabaseUrl || !CONFIG.supabaseKey) return;
-      
-      try {
-        const resp = await fetch(CONFIG.supabaseUrl + '/rest/v1/queue_status', {
-          headers: { 'apikey': CONFIG.supabaseKey, 'Authorization': 'Bearer ' + CONFIG.supabaseKey }
-        });
-        const data = await resp.json();
-        
-        const counts = { queued: 0, processing: 0, done: 0, failed: 0 };
-        for (const row of data) {
-          if (['queued'].includes(row.status)) counts.queued += row.doc_count;
-          else if (['extracting', 'ocr_needed', 'cleaning', 'routing', 'summarizing', 'checking', 'storing'].includes(row.status)) counts.processing += row.doc_count;
-          else if (row.status === 'done') counts.done += row.doc_count;
-          else if (row.status === 'failed') counts.failed += row.doc_count;
-        }
-        
-        document.getElementById('qQueued').textContent = counts.queued;
-        document.getElementById('qProcessing').textContent = counts.processing;
-        document.getElementById('qDone').textContent = counts.done;
-        document.getElementById('qFailed').textContent = counts.failed;
-        
-        // Keep polling if there's work in progress
-        if (counts.queued > 0 || counts.processing > 0) {
-          if (!pollInterval) pollInterval = setInterval(() => { pollQueueStatus(); loadTree(); }, 10000);
-        } else {
-          if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-        }
-      } catch (e) { /* silent */ }
-    }
-    
-    // ══════════════════════════════════════════════════════════
-    // TREE RENDERING
-    // ══════════════════════════════════════════════════════════
-    let treeData = [];
-    
-    async function loadTree() {
-      if (!CONFIG.supabaseUrl || !CONFIG.supabaseKey) return;
-      
-      try {
-        let data;
-        
-        // Try the cached tree_data.json first
-        try {
-          const cacheResp = await fetch(CONFIG.supabaseUrl + '/storage/v1/object/public/tree_cache/tree_data.json');
-          if (cacheResp.ok) {
-            const parsed = await cacheResp.json();
-            // FIX: Ensure we got an array (cache might contain an error object or wrapped response)
-            if (Array.isArray(parsed)) {
-              data = parsed;
-            } else if (parsed && typeof parsed === 'object' && !parsed.error) {
-              // generate_tree_json returns jsonb which might not be array-wrapped
-              data = Array.isArray(parsed) ? parsed : [parsed];
-            }
-          }
-        } catch (e) {}
-        
-        // Fallback to direct REST query on documents table
-        if (!data) {
-          try {
-            const resp = await fetch(CONFIG.supabaseUrl + '/rest/v1/documents?select=*&order=created_at.desc', {
-              headers: { 'apikey': CONFIG.supabaseKey, 'Authorization': 'Bearer ' + CONFIG.supabaseKey }
-            });
-            if (resp.ok) {
-              const parsed = await resp.json();
-              if (Array.isArray(parsed)) data = parsed;
-            }
-          } catch (e2) {}
-        }
-        
-        // Last resort: try tree_data view
-        if (!data) {
-          try {
-            const resp = await fetch(CONFIG.supabaseUrl + '/rest/v1/tree_data', {
-              headers: { 'apikey': CONFIG.supabaseKey, 'Authorization': 'Bearer ' + CONFIG.supabaseKey }
-            });
-            if (resp.ok) {
-              const parsed = await resp.json();
-              if (Array.isArray(parsed)) data = parsed;
-            }
-          } catch (e3) {}
-        }
-        
-        treeData = data || [];
-        renderTree(treeData);
-      } catch (e) {
-        console.error('Tree load failed:', e);
-      }
-    }
-    
-    function renderTree(data) {
-      const container = document.getElementById('treeContainer');
-      // FIX: Ensure data is always an array before iterating
-      if (!Array.isArray(data) || data.length === 0) {
-        container.innerHTML = '<div class="empty-state"><p>📭</p><p>No documents yet. Upload some files above to get started.</p></div>';
-        return;
-      }
-      
-      // Build nested structure
-      const tree = {};
-      for (const doc of data) {
-        const cat = doc.category || 'Uncategorized';
-        const sub = doc.subcategory || 'ROOT';
-        const subsub = doc.sub_subcategory || null;
-        
-        if (!tree[cat]) tree[cat] = {};
-        if (!tree[cat][sub]) tree[cat][sub] = {};
-        const key = subsub || '__docs__';
-        if (subsub) {
-          if (!tree[cat][sub][subsub]) tree[cat][sub][subsub] = [];
-          tree[cat][sub][subsub].push(doc);
-        } else {
-          if (!tree[cat][sub]['__docs__']) tree[cat][sub]['__docs__'] = [];
-          tree[cat][sub]['__docs__'].push(doc);
-        }
-      }
-      
-      let html = '';
-      for (const [cat, subs] of Object.entries(tree).sort()) {
-        html += `<details open class="tree-node"><summary><strong>${esc(cat)}</strong> <span style="color:var(--text-muted); font-size:12px">(${countDocs(subs)})</span></summary>`;
-        for (const [sub, subsubs] of Object.entries(subs).sort()) {
-          html += `<details class="tree-node"><summary>${esc(sub)} <span style="color:var(--text-muted); font-size:12px">(${countDocs(subsubs)})</span></summary>`;
-          for (const [key, items] of Object.entries(subsubs).sort()) {
-            if (key === '__docs__') {
-              html += renderLeaves(items);
-            } else {
-              html += `<details class="tree-node"><summary>${esc(key)} <span style="color:var(--text-muted); font-size:12px">(${items.length})</span></summary>`;
-              html += renderLeaves(items);
-              html += '</details>';
-            }
-          }
-          html += '</details>';
-        }
-        html += '</details>';
-      }
-      container.innerHTML = html;
-    }
-    
-    function countDocs(obj) {
-      let count = 0;
-      for (const v of Object.values(obj)) {
-        if (Array.isArray(v)) count += v.length;
-        else count += countDocs(v);
-      }
-      return count;
-    }
-    
-    function renderLeaves(docs) {
-      return docs.map((doc, idx) => {
-        const title = doc.title || doc.original_filename || doc.filename;
-        const status = doc.status || 'queued';
-        const lane = (doc.doctrinal_lanes || [])[0];
-        const laneClass = lane === 'cftc_commodities' ? 'lane-cftc' : lane === 'sec_securities' ? 'lane-sec' : lane === 'gambling' ? 'lane-gambling' : 'lane-cross';
-        
-        let badges = '';
-        if (status === 'failed') badges += `<span class="badge badge-failed">FAILED</span> `;
-        else if (status === 'queued') badges += `<span class="badge badge-queued">queued</span> `;
-        else if (status === 'processing') badges += `<span class="badge badge-processing">processing</span> `;
-        else if (doc.needs_review) badges += `<span class="badge badge-review">⚠ review</span> `;
-        
-        if (doc.relevance_score) badges += `<span class="badge badge-score">${esc(String(doc.relevance_score))}/10</span> `;
-        
-        // Store click data as a base64-encoded data attribute to avoid quote/XSS issues
-        const clickData = btoa(JSON.stringify({ original_url: doc.original_url, summary_url: doc.summary_url, extracted_text_url: doc.extracted_text_url, title, error_message: doc.error_message }));
-        const searchText = esc((title + ' ' + (doc.key_claims||[]).join(' ') + ' ' + (doc.sub_themes||[]).join(' ')).toLowerCase());
-        
-        return `<div class="leaf" data-search="${searchText}" data-viewer="${clickData}" onclick="openViewer(atob(this.dataset.viewer))">
-          ${lane ? '<div class="lane-dot ' + laneClass + '"></div>' : ''}
-          <span class="leaf-title">${esc(title)}</span>
-          ${badges}
-          ${doc.year ? '<span style="color:var(--text-muted); font-size:11px">' + esc(String(doc.year)) + '</span>' : ''}
-        </div>`;
-      }).join('');
-    }
-    
-    function filterTree() {
-      const query = document.getElementById('treeSearch').value.toLowerCase();
-      document.querySelectorAll('.leaf').forEach(leaf => {
-        const match = !query || leaf.dataset.search.includes(query);
-        leaf.style.display = match ? '' : 'none';
-      });
-    }
-    
-    // ══════════════════════════════════════════════════════════
-    // DOCUMENT VIEWER
-    // ══════════════════════════════════════════════════════════
-    function openViewer(dataStr) {
-      const data = JSON.parse(dataStr);
-      document.getElementById('viewer').classList.add('active');
-      
-      if (data.error_message) {
-        document.getElementById('viewerMindmapContent').textContent = '❌ PROCESSING FAILED\n\n' + data.error_message;
-        document.getElementById('viewerPdf').src = 'about:blank';
-        return;
-      }
-      
-      // Load mind map
-      if (data.summary_url) {
-        fetch(data.summary_url).then(r => r.text()).then(text => {
-          document.getElementById('viewerMindmapContent').textContent = text;
-        }).catch(() => {
-          document.getElementById('viewerMindmapContent').textContent = 'Summary not available yet';
-        });
-      } else {
-        document.getElementById('viewerMindmapContent').textContent = 'Summary not available yet (document may still be processing)';
-      }
-      
-      // Load extracted text
-      if (data.extracted_text_url) {
-        fetch(data.extracted_text_url).then(r => r.text()).then(text => {
-          document.getElementById('viewerTextContent').textContent = text;
-        }).catch(() => {
-          document.getElementById('viewerTextContent').textContent = 'Extracted text not available';
-        });
-      }
-      
-      // Load PDF
-      if (data.original_url) {
-        document.getElementById('viewerPdf').src = data.original_url;
-      } else {
-        document.getElementById('viewerPdf').src = 'about:blank';
-      }
-    }
-    
-    function closeViewer() {
-      document.getElementById('viewer').classList.remove('active');
-      document.getElementById('viewerPdf').src = 'about:blank';
-    }
-    
-    function showViewerTab(tab) {
-      document.querySelectorAll('.viewer-tab').forEach(t => t.classList.remove('active'));
-      event.target.classList.add('active');
-      document.getElementById('viewerMindmap').style.display = tab === 'mindmap' ? '' : 'none';
-      document.getElementById('viewerText').style.display = tab === 'text' ? '' : 'none';
-    }
-    
-    // Close viewer on escape
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeViewer(); });
-    
-    // ══════════════════════════════════════════════════════════
-    // INIT
-    // ══════════════════════════════════════════════════════════
-    loadConfig();
+  } catch(e) {
+    dot.className = 'status-dot disconnected';
+    el.lastChild.textContent = ' Offline';
+  }
+}
+
+// ─── Supabase REST helpers ───
+function supabaseRest(path, options = {}) {
+  const url = APP.config.supabaseUrl + path;
+  const headers = {
+    'apikey': APP.config.supabaseKey,
+    'Authorization': 'Bearer ' + APP.config.supabaseKey,
+    'Content-Type': 'application/json',
+    ...options.headers
+  };
+  return fetch(url, { ...options, headers });
+}
+
+async function supabaseQuery(table, params = '') {
+  const r = await supabaseRest(`/rest/v1/${table}?${params}`);
+  if (!r.ok) throw new Error(`Supabase error: ${r.status}`);
+  return r.json();
+}
+
+async function supabaseStorageGet(bucket, path) {
+  const url = `${APP.config.supabaseUrl}/storage/v1/object/public/${bucket}/${path}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Storage error: ${r.status}`);
+  return r.json();
+}
+
+// ─── Routing ───
+function navigate(view) {
+  if (view === 'upload') location.hash = '#upload';
+  else if (view === 'tree') location.hash = '#tree';
+  else if (view === 'document') return; // handled by navigateToDoc
+}
+
+function navigateToDoc(id) {
+  APP.previousView = APP.currentView;
+  location.hash = '#document/' + id;
+}
+
+function navigateBack() {
+  location.hash = '#' + (APP.previousView || 'tree');
+}
+
+function handleHashRoute() {
+  const hash = location.hash.replace('#', '') || 'upload';
+  const parts = hash.split('/');
+  const view = parts[0];
+
+  if (view === 'document' && parts[1]) {
+    showView('document');
+    loadDocument(parts[1]);
+  } else if (view === 'tree') {
+    showView('tree');
     loadTree();
+  } else {
+    showView('upload');
+  }
+}
+
+function showView(name) {
+  APP.currentView = name;
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  const viewEl = document.getElementById('view-' + name);
+  if (viewEl) {
+    viewEl.classList.add('active');
+    viewEl.classList.add('fade-in');
+    setTimeout(() => viewEl.classList.remove('fade-in'), 300);
+  }
+
+  // Update nav tabs
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  const tab = document.querySelector(`.nav-tab[data-view="${name}"]`);
+  if (tab) tab.classList.add('active');
+
+  // Start/stop tree auto-refresh
+  if (name === 'tree') {
+    if (!APP.treeRefreshTimer) {
+      APP.treeRefreshTimer = setInterval(loadTree, 30000);
+    }
+  } else {
+    if (APP.treeRefreshTimer) {
+      clearInterval(APP.treeRefreshTimer);
+      APP.treeRefreshTimer = null;
+    }
+  }
+}
+
+// ─── VIEW 1: UPLOAD ───
+
+// Drag and drop
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => { dropzone.classList.remove('dragover'); });
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+  addFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
+
+// Folder input — collect all files from a chosen folder
+const folderInput = document.getElementById('folderInput');
+folderInput.addEventListener('change', () => {
+  addFiles(folderInput.files);
+  folderInput.value = '';
+});
+
+function addFiles(fileList) {
+  for (const f of fileList) {
+    if (!APP.uploadFiles.find(x => x.name === f.name && x.size === f.size)) {
+      APP.uploadFiles.push(f);
+    }
+  }
+  renderFileList();
+  updateUploadButton();
+}
+
+function removeFile(index) {
+  APP.uploadFiles.splice(index, 1);
+  renderFileList();
+  updateUploadButton();
+}
+
+function renderFileList() {
+  const container = document.getElementById('fileListContainer');
+  const list = document.getElementById('fileList');
+  if (APP.uploadFiles.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = 'block';
+  list.innerHTML = APP.uploadFiles.map((f, i) => `
+    <div class="file-item">
+      <span class="file-icon">
+        <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M3.75 1.5a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Zm6.75.062V4.25c0 .138.112.25.25.25h2.688l-.011-.013-2.914-2.914-.013-.011ZM2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Z"/></svg>
+      </span>
+      <span class="file-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+      <span class="file-size">${formatFileSize(f.size)}</span>
+      <button class="file-remove" onclick="removeFile(${i})" title="Remove">
+        <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>
+      </button>
+    </div>
+  `).join('');
+}
+
+function updateUploadButton() {
+  const btn = document.getElementById('uploadBtn');
+  const cat = document.getElementById('uploadCategory').value;
+  btn.disabled = APP.uploadFiles.length === 0 || !cat;
+}
+
+function onCategoryChange() {
+  const cat = document.getElementById('uploadCategory').value;
+  const subContainer = document.getElementById('subcategoryContainer');
+  const subsubGroup = document.getElementById('subsubGroup');
+
+  if (SUBCATEGORIES[cat]) {
+    subContainer.innerHTML = `
+      <select class="form-select" id="uploadSubcategory" onchange="onSubcategoryChange()">
+        <option value="">Select subcategory…</option>
+        ${SUBCATEGORIES[cat].map(s => `<option value="${s}">${s}</option>`).join('')}
+      </select>
+    `;
+  } else {
+    subContainer.innerHTML = `<input class="form-input" id="uploadSubcategoryInput" placeholder="Enter subcategory…" ${cat ? '' : 'disabled'}>`;
+  }
+  subsubGroup.style.display = 'none';
+  updateUploadButton();
+}
+
+function onSubcategoryChange() {
+  const sub = document.getElementById('uploadSubcategory');
+  const subsubGroup = document.getElementById('subsubGroup');
+  const subsubSelect = document.getElementById('uploadSubsub');
+
+  if (sub && SUB_SUBCATEGORIES[sub.value]) {
+    const opts = SUB_SUBCATEGORIES[sub.value];
+    subsubSelect.innerHTML = `<option value="">Select sub-subcategory…</option>` +
+      opts.map(o => `<option value="${o}">${o}</option>`).join('');
+    subsubGroup.style.display = 'block';
+  } else {
+    subsubGroup.style.display = 'none';
+  }
+}
+
+function clearUpload() {
+  APP.uploadFiles = [];
+  renderFileList();
+  document.getElementById('uploadCategory').value = '';
+  onCategoryChange();
+  document.getElementById('uploadNotes').value = '';
+  document.getElementById('uploadStatus').innerHTML = '';
+  updateUploadButton();
+}
+
+async function startUpload() {
+  if (APP.uploadFiles.length === 0) return;
+
+  const btn = document.getElementById('uploadBtn');
+  const status = document.getElementById('uploadStatus');
+  const cat = document.getElementById('uploadCategory').value;
+  const subEl = document.getElementById('uploadSubcategory') || document.getElementById('uploadSubcategoryInput');
+  const sub = subEl ? subEl.value : '';
+  const subsubEl = document.getElementById('uploadSubsub');
+  const subsub = subsubEl ? subsubEl.value : '';
+  const notes = document.getElementById('uploadNotes').value;
+
+  btn.disabled = true;
+  status.className = 'upload-status loading';
+
+  const allFiles = [...APP.uploadFiles];
+  const BATCH_SIZE = 20;
+  let successCount = 0;
+  let errorCount = 0;
+  let processed = 0;
+
+  // Process files in batches of BATCH_SIZE
+  for (let batchStart = 0; batchStart < allFiles.length; batchStart += BATCH_SIZE) {
+    const batch = allFiles.slice(batchStart, batchStart + BATCH_SIZE);
+    const batchEnd = Math.min(batchStart + BATCH_SIZE, allFiles.length);
+
+    status.innerHTML = `<span class="spinner"></span> Uploading ${batchStart + 1}–${batchEnd} of ${allFiles.length} files…`;
+
+    // Convert all files in this batch to base64 in parallel
+    const fileEntries = await Promise.all(batch.map(async (file) => {
+      const base64 = await fileToBase64(file);
+      return { name: file.name, base64 };
+    }));
+
+    const payload = {
+      files: fileEntries,
+      category: cat,
+      subcategory: sub,
+      sub_subcategory: subsub,
+      notes: notes,
+    };
+
+    try {
+      const r = await fetch(APP.config.webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (r.ok) {
+        successCount += batch.length;
+      } else {
+        errorCount += batch.length;
+        console.error(`Batch upload failed (files ${batchStart + 1}-${batchEnd}): ${r.status}`);
+      }
+    } catch(e) {
+      errorCount += batch.length;
+      console.error(`Batch upload error (files ${batchStart + 1}-${batchEnd}):`, e);
+    }
+
+    processed += batch.length;
+  }
+
+  btn.disabled = false;
+
+  if (errorCount === 0) {
+    status.className = 'upload-status success';
+    status.innerHTML = `<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg> ${successCount} file${successCount > 1 ? 's' : ''} uploaded`;
+    APP.uploadFiles = [];
+    renderFileList();
+    updateUploadButton();
     pollQueueStatus();
-    // Auto-refresh tree every 30 seconds
-    setInterval(loadTree, 30000);
-  </script>
+    loadRecentUploads();
+  } else {
+    status.className = 'upload-status error';
+    status.innerHTML = `⚠ ${successCount} succeeded, ${errorCount} failed`;
+  }
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Queue polling
+async function pollQueueStatus() {
+  try {
+    // Try the queue_status view first, fall back to direct query
+    let data;
+    try {
+      data = await supabaseQuery('queue_status', 'select=*');
+    } catch(e) {
+      // Fallback: query documents grouped by status
+      const docs = await supabaseQuery('documents', 'select=status');
+      const counts = { queued: 0, processing: 0, done: 0, failed: 0 };
+      docs.forEach(d => {
+        const s = (d.status || '').toLowerCase();
+        if (s === 'queued' || s === 'pending') counts.queued++;
+        else if (s === 'processing' || s === 'in_progress') counts.processing++;
+        else if (s === 'done' || s === 'completed' || s === 'complete') counts.done++;
+        else if (s === 'failed' || s === 'error') counts.failed++;
+        else counts.done++; // Default to done if no status
+      });
+      data = [counts];
+    }
+
+    if (data && data.length > 0) {
+      const q = data[0];
+      document.getElementById('qQueued').textContent = q.queued || 0;
+      document.getElementById('qProcessing').textContent = q.processing || 0;
+      document.getElementById('qDone').textContent = q.done || q.completed || 0;
+      document.getElementById('qFailed').textContent = q.failed || 0;
+    }
+  } catch(e) {
+    // Silently fail — queue status is informational
+    document.getElementById('qQueued').textContent = '—';
+    document.getElementById('qProcessing').textContent = '—';
+    document.getElementById('qDone').textContent = '—';
+    document.getElementById('qFailed').textContent = '—';
+  }
+}
+
+async function loadRecentUploads() {
+  try {
+    const docs = await supabaseQuery('documents',
+      'select=id,title,original_filename,created_at,status&order=created_at.desc&limit=5');
+    const el = document.getElementById('recentUploads');
+    if (!docs || docs.length === 0) {
+      el.innerHTML = '<p style="color:var(--text-muted);font-size:12px;padding:10px 0">No recent uploads</p>';
+      return;
+    }
+    el.innerHTML = docs.map(d => `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-muted);font-size:12px;cursor:pointer" onclick="navigateToDoc('${d.id}')">
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary)">${escapeHtml(d.title || d.original_filename || 'Untitled')}</span>
+        <span class="badge badge-${statusColor(d.status)}" style="font-size:10px">${escapeHtml(d.status || 'unknown')}</span>
+      </div>
+    `).join('');
+  } catch(e) {
+    // silent
+  }
+}
+
+function statusColor(s) {
+  if (!s) return 'muted';
+  s = s.toLowerCase();
+  if (s === 'done' || s === 'completed' || s === 'complete') return 'green';
+  if (s === 'processing' || s === 'in_progress') return 'yellow';
+  if (s === 'failed' || s === 'error') return 'red';
+  return 'muted';
+}
+
+// ─── VIEW 2: TREE ───
+
+let treeLoadAttempt = 0;
+
+async function loadTree() {
+  try {
+    let data;
+    // Try tree_cache from storage first
+    try {
+      data = await supabaseStorageGet('tree_cache', 'tree_data.json');
+    } catch(e) {
+      // Fallback: direct query
+      data = null;
+    }
+
+    if (data && (data.documents || data.categories || data.tree)) {
+      renderTreeFromCache(data);
+    } else {
+      await loadTreeFromDocuments();
+    }
+
+    document.getElementById('treeLastRefresh').textContent =
+      'Last refresh: ' + new Date().toLocaleTimeString();
+  } catch(e) {
+    console.error('Tree load error:', e);
+    if (treeLoadAttempt === 0) {
+      treeLoadAttempt++;
+      await loadTreeFromDocuments();
+    }
+  }
+}
+
+async function loadTreeFromDocuments() {
+  try {
+    const docs = await supabaseQuery('documents',
+      'select=id,title,original_filename,doc_type,category,subcategory,sub_subcategory,relevance_score,status,needs_review,bluebook_citation,created_at&order=category,subcategory,sub_subcategory,title');
+
+    APP.treeDocuments = docs || [];
+    const tree = buildTreeFromDocs(APP.treeDocuments);
+    renderTree(tree);
+    document.getElementById('treeDocCount').textContent = `${APP.treeDocuments.length} documents`;
+  } catch(e) {
+    const el = document.getElementById('treeContainer');
+    el.innerHTML = `<div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="8" x2="12" y2="12"/>
+        <line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+      <h3>Unable to load documents</h3>
+      <p>Check your Supabase configuration</p>
+    </div>`;
+  }
+}
+
+function buildTreeFromDocs(docs) {
+  const tree = {};
+  for (const doc of docs) {
+    const cat = doc.category || 'Uncategorized';
+    const sub = doc.subcategory || '';
+    const subsub = doc.sub_subcategory || '';
+
+    if (!tree[cat]) tree[cat] = { count: 0, subs: {} };
+    tree[cat].count++;
+
+    if (sub) {
+      if (!tree[cat].subs[sub]) tree[cat].subs[sub] = { count: 0, subsubs: {} };
+      tree[cat].subs[sub].count++;
+
+      if (subsub) {
+        if (!tree[cat].subs[sub].subsubs[subsub]) tree[cat].subs[sub].subsubs[subsub] = { count: 0, docs: [] };
+        tree[cat].subs[sub].subsubs[subsub].count++;
+        tree[cat].subs[sub].subsubs[subsub].docs.push(doc);
+      } else {
+        if (!tree[cat].subs[sub].subsubs['_root']) tree[cat].subs[sub].subsubs['_root'] = { count: 0, docs: [] };
+        tree[cat].subs[sub].subsubs['_root'].count++;
+        tree[cat].subs[sub].subsubs['_root'].docs.push(doc);
+      }
+    } else {
+      if (!tree[cat].subs['_root']) tree[cat].subs['_root'] = { count: 0, subsubs: { '_root': { count: 0, docs: [] } } };
+      tree[cat].subs['_root'].count++;
+      tree[cat].subs['_root'].subsubs['_root'].count++;
+      tree[cat].subs['_root'].subsubs['_root'].docs.push(doc);
+    }
+  }
+  return tree;
+}
+
+function renderTree(tree) {
+  const container = document.getElementById('treeContainer');
+  let html = '';
+
+  const catOrder = ['SecReg', 'Prediction Markets/CFTC', 'Gambling Law', 'Trade Secrets Law', 'Privacy Law', 'Uncategorized'];
+  const sortedCats = Object.keys(tree).sort((a, b) => {
+    const ai = catOrder.indexOf(a);
+    const bi = catOrder.indexOf(b);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
+
+  for (const cat of sortedCats) {
+    const catData = tree[cat];
+    html += `<div class="tree-node">
+      <details class="tree-category" ${catData.count <= 30 ? 'open' : ''}>
+        <summary>
+          <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="color:var(--accent-yellow);flex-shrink:0"><path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1Z"/></svg>
+          ${escapeHtml(cat)}
+          <span class="doc-count">(${catData.count})</span>
+        </summary>`;
+
+    const subs = Object.keys(catData.subs).sort((a, b) => {
+      if (a === '_root') return 1;
+      if (b === '_root') return -1;
+      return a.localeCompare(b);
+    });
+
+    for (const sub of subs) {
+      const subData = catData.subs[sub];
+      if (sub === '_root') {
+        // Root-level docs for this category
+        const rootSubsub = subData.subsubs['_root'];
+        if (rootSubsub && rootSubsub.docs.length > 0) {
+          html += renderDocItems(rootSubsub.docs);
+        }
+        continue;
+      }
+
+      html += `<div class="tree-node">
+        <details class="tree-category" ${subData.count <= 20 ? 'open' : ''}>
+          <summary>
+            <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="color:var(--accent-blue);flex-shrink:0"><path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1Z"/></svg>
+            ${escapeHtml(sub)}
+            <span class="doc-count">(${subData.count})</span>
+          </summary>`;
+
+      const subsubs = Object.keys(subData.subsubs).sort((a, b) => {
+        if (a === '_root') return 1;
+        if (b === '_root') return -1;
+        return a.localeCompare(b);
+      });
+
+      for (const subsub of subsubs) {
+        const subsubData = subData.subsubs[subsub];
+        if (subsub === '_root') {
+          html += renderDocItems(subsubData.docs);
+          continue;
+        }
+
+        html += `<div class="tree-node">
+          <details class="tree-category">
+            <summary>
+              <svg viewBox="0 0 16 16" fill="currentColor" width="13" height="13" style="color:var(--text-muted);flex-shrink:0"><path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1Z"/></svg>
+              ${escapeHtml(subsub)}
+              <span class="doc-count">(${subsubData.count})</span>
+            </summary>`;
+        html += renderDocItems(subsubData.docs);
+        html += `</details></div>`;
+      }
+
+      html += `</details></div>`;
+    }
+
+    html += `</details></div>`;
+  }
+
+  container.innerHTML = html || `<div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+    </svg>
+    <h3>No documents yet</h3>
+    <p>Upload your first document to get started</p>
+  </div>`;
+}
+
+function renderTreeFromCache(data) {
+  // tree_data.json format: { categories: [...], documents: [...] }
+  if (data.documents) {
+    APP.treeDocuments = data.documents;
+    document.getElementById('treeDocCount').textContent = `${data.documents.length} documents`;
+  }
+  if (data.tree) {
+    renderTree(data.tree);
+  } else {
+    const tree = buildTreeFromDocs(data.documents || []);
+    renderTree(tree);
+  }
+}
+
+function renderDocItems(docs) {
+  if (!docs || docs.length === 0) return '';
+  // Lazy-render: only show first 100 if large
+  const visible = docs.slice(0, 200);
+  let html = '';
+  for (const doc of visible) {
+    const title = doc.title || doc.original_filename || 'Untitled';
+    const typeColor = DOC_TYPE_COLORS[doc.doc_type] || 'muted';
+    const relScore = doc.relevance_score;
+    let relColor = 'muted';
+    if (relScore >= 8) relColor = 'green';
+    else if (relScore >= 5) relColor = 'yellow';
+    else if (relScore >= 1) relColor = 'red';
+
+    html += `<div class="tree-doc-item" data-id="${doc.id}" data-search="${escapeHtml((title + ' ' + (doc.bluebook_citation || '') + ' ' + (doc.doc_type || '')).toLowerCase())}" onclick="navigateToDoc('${doc.id}')">
+      <svg class="doc-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M3.75 1.5a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Zm6.75.062V4.25c0 .138.112.25.25.25h2.688l-.011-.013-2.914-2.914-.013-.011ZM2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Z"/></svg>
+      <span class="doc-title">${escapeHtml(title)}</span>
+      <div class="doc-badges">
+        ${doc.doc_type ? `<span class="badge badge-${typeColor}">${escapeHtml(doc.doc_type)}</span>` : ''}
+        ${relScore != null ? `<span class="badge badge-${relColor}">${relScore}</span>` : ''}
+        ${doc.status && doc.status !== 'done' && doc.status !== 'completed' ? `<span class="badge badge-yellow">${escapeHtml(doc.status)}</span>` : ''}
+        ${doc.needs_review ? `<span class="badge badge-orange">review</span>` : ''}
+      </div>
+    </div>`;
+  }
+  if (docs.length > 200) {
+    html += `<div style="padding:6px 28px;font-size:12px;color:var(--text-muted)">…and ${docs.length - 200} more documents</div>`;
+  }
+  return html;
+}
+
+function filterTree() {
+  const query = document.getElementById('treeSearch').value.toLowerCase().trim();
+  const items = document.querySelectorAll('.tree-doc-item');
+  const categories = document.querySelectorAll('.tree-category');
+
+  if (!query) {
+    items.forEach(el => el.style.display = '');
+    categories.forEach(el => el.style.display = '');
+    return;
+  }
+
+  // Hide all items that don't match
+  let visibleCount = 0;
+  items.forEach(el => {
+    const searchText = el.getAttribute('data-search') || '';
+    if (searchText.includes(query)) {
+      el.style.display = '';
+      visibleCount++;
+    } else {
+      el.style.display = 'none';
+    }
+  });
+
+  // Show categories that have visible children, expand them
+  categories.forEach(details => {
+    const hasVisible = details.querySelector('.tree-doc-item:not([style*="display: none"])');
+    if (hasVisible) {
+      details.style.display = '';
+      details.open = true;
+    } else {
+      details.style.display = 'none';
+    }
+  });
+
+  document.getElementById('treeDocCount').textContent =
+    query ? `${visibleCount} matching documents` : `${APP.treeDocuments.length} documents`;
+}
+
+// ─── VIEW 3: DOCUMENT VIEWER ───
+
+async function loadDocument(id) {
+  const headerEl = document.getElementById('docHeader');
+  headerEl.innerHTML = '<div style="text-align:center;padding:40px"><span class="spinner"></span> Loading document…</div>';
+  document.getElementById('docContentTabs').style.display = 'none';
+  document.getElementById('docQuality').style.display = 'none';
+
+  try {
+    const docs = await supabaseQuery('documents', `select=*&id=eq.${id}`);
+    if (!docs || docs.length === 0) {
+      headerEl.innerHTML = '<div class="empty-state"><h3>Document not found</h3></div>';
+      return;
+    }
+
+    const doc = docs[0];
+    APP.currentDoc = doc;
+    renderDocumentHeader(doc);
+    renderDocumentContent(doc);
+    renderDocumentQuality(doc);
+  } catch(e) {
+    headerEl.innerHTML = `<div class="empty-state"><h3>Error loading document</h3><p>${escapeHtml(e.message)}</p></div>`;
+  }
+}
+
+function renderDocumentHeader(doc) {
+  const el = document.getElementById('docHeader');
+  const relScore = doc.relevance_score;
+  let relColor = 'muted';
+  let relBg = 'var(--bg-overlay)';
+  if (relScore >= 8) { relColor = 'green'; relBg = 'rgba(63,185,80,0.15)'; }
+  else if (relScore >= 5) { relColor = 'yellow'; relBg = 'rgba(210,153,34,0.15)'; }
+  else if (relScore >= 1) { relColor = 'red'; relBg = 'rgba(248,81,73,0.15)'; }
+
+  const typeColor = DOC_TYPE_COLORS[doc.doc_type] || 'muted';
+  const title = doc.title || doc.original_filename || 'Untitled Document';
+
+  let html = `
+    <div class="doc-title-line">
+      <div class="doc-title-text">${escapeHtml(title)}</div>
+      ${relScore != null ? `<div class="doc-relevance-badge" style="background:${relBg};color:var(--accent-${relColor})">${relScore}</div>` : ''}
+    </div>`;
+
+  // Citation
+  if (doc.bluebook_citation) {
+    html += `<div class="doc-citation">${escapeHtml(doc.bluebook_citation)}</div>`;
+  }
+
+  // Metadata grid
+  html += '<div class="doc-meta-grid">';
+  if (doc.authors) html += metaItem('Authors', Array.isArray(doc.authors) ? doc.authors.join(', ') : doc.authors);
+  if (doc.year) html += metaItem('Year', doc.year);
+  if (doc.court) html += metaItem('Court', doc.court);
+  if (doc.doc_type) html += metaItem('Document Type', `<span class="badge badge-${typeColor}">${escapeHtml(doc.doc_type)}</span>`);
+  if (doc.category) html += metaItem('Category', doc.category + (doc.subcategory ? ' / ' + doc.subcategory : '') + (doc.sub_subcategory ? ' / ' + doc.sub_subcategory : ''));
+  if (doc.created_at) html += metaItem('Added', new Date(doc.created_at).toLocaleDateString());
+  html += '</div>';
+
+  // Doctrinal lanes
+  if (doc.doctrinal_lanes && doc.doctrinal_lanes.length > 0) {
+    const lanes = Array.isArray(doc.doctrinal_lanes) ? doc.doctrinal_lanes : [doc.doctrinal_lanes];
+    html += `<div class="doc-pills-section">
+      <div class="pills-label">Doctrinal Lanes</div>
+      <div class="doc-pills-row">${lanes.map(l => `<span class="pill" style="border-color:var(--accent-purple);color:var(--accent-purple)">${escapeHtml(l)}</span>`).join('')}</div>
+    </div>`;
+  }
+
+  // Sub-themes
+  if (doc.sub_themes && doc.sub_themes.length > 0) {
+    const themes = Array.isArray(doc.sub_themes) ? doc.sub_themes : [doc.sub_themes];
+    html += `<div class="doc-pills-section">
+      <div class="pills-label">Sub-Themes</div>
+      <div class="doc-pills-row">${themes.map(t => `<span class="pill">${escapeHtml(t)}</span>`).join('')}</div>
+    </div>`;
+  }
+
+  // Key claims
+  if (doc.key_claims && doc.key_claims.length > 0) {
+    const claims = Array.isArray(doc.key_claims) ? doc.key_claims : [doc.key_claims];
+    html += `<div class="doc-claims-section"><h4>Key Claims</h4><ul>${claims.map(c => `<li>${escapeHtml(c)}</li>`).join('')}</ul></div>`;
+  }
+
+  // Citable for
+  if (doc.citable_for && doc.citable_for.length > 0) {
+    const citable = Array.isArray(doc.citable_for) ? doc.citable_for : [doc.citable_for];
+    html += `<div class="doc-claims-section"><h4>Citable For</h4><ul>${citable.map(c => `<li>${escapeHtml(c)}</li>`).join('')}</ul></div>`;
+  }
+
+  // Cases cited
+  if (doc.cases_cited && doc.cases_cited.length > 0) {
+    const cases = Array.isArray(doc.cases_cited) ? doc.cases_cited : [doc.cases_cited];
+    html += `<div class="doc-claims-section"><h4>Cases Cited</h4><ul>${cases.map(c => `<li>${escapeHtml(c)}</li>`).join('')}</ul></div>`;
+  }
+
+  // Statutes cited
+  if (doc.statutes_cited && doc.statutes_cited.length > 0) {
+    const statutes = Array.isArray(doc.statutes_cited) ? doc.statutes_cited : [doc.statutes_cited];
+    html += `<div class="doc-claims-section"><h4>Statutes Cited</h4><ul>${statutes.map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ul></div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+function metaItem(label, value) {
+  return `<div class="doc-meta-item"><span class="meta-label">${escapeHtml(label)}</span><span class="meta-value">${value}</span></div>`;
+}
+
+function renderDocumentContent(doc) {
+  const tabsEl = document.getElementById('docContentTabs');
+  tabsEl.style.display = 'block';
+
+  const tabs = [
+    { id: 'overview', label: 'Overview', content: doc.overview_text, placeholder: 'Processing…', type: 'text' },
+    { id: 'outline', label: 'Outline', content: doc.outline_text, placeholder: 'Processing…', type: 'outline' },
+    { id: 'fulltext', label: 'Full Text', content: doc.full_extracted_text, placeholder: 'No extracted text available', type: 'monospace' },
+    { id: 'supplementary', label: 'Supplementary', content: doc.supplementary_text, materials: doc.supplementary_materials, placeholder: 'Awaiting enrichment…', type: 'supplementary' },
+    { id: 'fullcase', label: 'Full Case', content: doc.fuller_full_text, sourceUrl: doc.fuller_full_source_url, placeholder: 'Awaiting full case retrieval…', type: 'fullcase' }
+  ];
+
+  // Tab bar
+  const tabBar = document.getElementById('contentTabBar');
+  tabBar.innerHTML = tabs.map((t, i) => {
+    const hasFilled = hasContent(t);
+    return `<button class="content-tab ${i === 0 ? 'active' : ''}" data-tab="${t.id}" onclick="switchContentTab('${t.id}')">
+      <span class="tab-dot ${hasFilled ? 'filled' : ''}"></span>
+      ${t.label}
+    </button>`;
+  }).join('');
+
+  // Panels
+  const panelsEl = document.getElementById('contentPanels');
+  panelsEl.innerHTML = tabs.map((t, i) => {
+    let inner = '';
+    const filled = hasContent(t);
+
+    if (!filled) {
+      inner = `<div class="processing-placeholder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </svg>
+        <p>${t.placeholder}</p>
+      </div>`;
+    } else if (t.type === 'outline') {
+      inner = `<div class="outline-text">${formatOutline(t.content)}</div>`;
+    } else if (t.type === 'monospace') {
+      inner = `<div class="content-text monospace">${escapeHtml(t.content)}</div>`;
+    } else if (t.type === 'supplementary') {
+      inner = renderSupplementary(t.content, t.materials);
+    } else if (t.type === 'fullcase') {
+      inner = '';
+      if (t.sourceUrl) {
+        inner += `<p style="margin-bottom:12px"><a href="${escapeHtml(t.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(t.sourceUrl)}</a></p>`;
+      }
+      inner += `<div class="content-text monospace">${escapeHtml(t.content)}</div>`;
+    } else {
+      inner = `<div class="content-text">${escapeHtml(t.content)}</div>`;
+    }
+
+    return `<div class="content-tab-panel ${i === 0 ? 'active' : ''}" id="panel-${t.id}">${inner}</div>`;
+  }).join('');
+}
+
+function hasContent(tab) {
+  if (tab.type === 'supplementary') {
+    return !!(tab.content || (tab.materials && tab.materials.length > 0));
+  }
+  return !!tab.content;
+}
+
+function switchContentTab(tabId) {
+  document.querySelectorAll('.content-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
+  document.querySelectorAll('.content-tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + tabId));
+}
+
+function formatOutline(text) {
+  if (!text) return '';
+  // Simple markdown-like formatting
+  return text
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^# (.+)$/gm, '<h2>$1</h2>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n{2,}/g, '</p><p>')
+    .replace(/\n/g, '<br>')
+    .replace(/^/, '<p>')
+    .replace(/$/, '</p>');
+}
+
+function renderSupplementary(text, materials) {
+  let html = '';
+  if (text) {
+    html += `<div class="content-text" style="margin-bottom:16px">${escapeHtml(text)}</div>`;
+  }
+  if (materials && Array.isArray(materials) && materials.length > 0) {
+    for (const m of materials) {
+      html += `<div class="supp-card">
+        ${m.title ? `<h4>${escapeHtml(m.title)}</h4>` : ''}
+        ${m.source_url ? `<a class="supp-url" href="${escapeHtml(m.source_url)}" target="_blank" rel="noopener">${escapeHtml(m.source_url)}</a>` : ''}
+        ${m.text ? `<div class="supp-text">${escapeHtml(m.text)}</div>` : ''}
+      </div>`;
+    }
+  }
+  return html || `<div class="processing-placeholder">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <polyline points="12 6 12 12 16 14"/>
+    </svg>
+    <p>Awaiting enrichment…</p>
+  </div>`;
+}
+
+function renderDocumentQuality(doc) {
+  const el = document.getElementById('docQuality');
+  const body = document.getElementById('qualityBody');
+
+  if (!doc.quality_score && !doc.gate_results) {
+    el.style.display = 'none';
+    return;
+  }
+
+  el.style.display = 'block';
+  let html = '';
+
+  if (doc.quality_score != null) {
+    html += `<div style="margin-bottom:12px;font-size:14px">
+      Quality Score: <strong style="color:${doc.quality_score >= 0.7 ? 'var(--accent-green)' : doc.quality_score >= 0.4 ? 'var(--accent-yellow)' : 'var(--accent-red)'}">${Math.round(doc.quality_score * 100)}%</strong>
+    </div>`;
+  }
+
+  if (doc.gate_results) {
+    let gates = doc.gate_results;
+    if (typeof gates === 'string') {
+      try { gates = JSON.parse(gates); } catch(e) { gates = null; }
+    }
+    if (gates && typeof gates === 'object') {
+      const entries = Array.isArray(gates) ? gates : Object.entries(gates).map(([k, v]) => ({ name: k, result: v }));
+      for (const gate of entries) {
+        const name = gate.name || gate.gate || Object.keys(gate).find(k => k !== 'result' && k !== 'passed') || 'Gate';
+        const passed = gate.result === true || gate.result === 'yes' || gate.passed === true || gate.result === 'Y';
+        html += `<div class="gate-item">
+          <span class="gate-icon ${passed ? 'pass' : 'fail'}">${passed ? '✓' : '✗'}</span>
+          <span class="gate-name">${escapeHtml(String(name))}</span>
+        </div>`;
+      }
+    }
+  }
+
+  body.innerHTML = html;
+}
+
+function toggleQuality() {
+  const body = document.getElementById('qualityBody');
+  const chevron = document.getElementById('qualityChevron');
+  body.classList.toggle('open');
+  chevron.style.transform = body.classList.contains('open') ? 'rotate(90deg)' : '';
+}
+
+// ─── Utility ───
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// ─── Initial data load ───
+setTimeout(() => {
+  loadRecentUploads();
+}, 1000);
+</script>
 </body>
 </html>
